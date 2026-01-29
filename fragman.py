@@ -1,29 +1,23 @@
-import json, os, requests, subprocess
+import os, json, requests, subprocess
 
 event = json.load(open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8"))
 p = event["client_payload"]
 
-film_id  = p["film_id"]
-film_adi = p["film_adi"]
-ses_url  = p["ses_url"]
-callback = p["callback"]
+film_id   = p["film_id"]
+tmdb_id   = p["tmdb_id"]
+film_adi  = p["film_adi"]
+ses_url   = p["ses_url"]
+callback  = p["callback"]
+
+TMDB_KEY = os.environ["TMDB_API_KEY"]
 
 print("🎬 Film:", film_adi)
 
-# ======================
-# MP3 indir
-# ======================
+# 1️⃣ MP3 indir
 mp3 = f"ses_{film_id}.mp3"
+open(mp3, "wb").write(requests.get(ses_url).content)
 
-r = requests.get(ses_url, timeout=30)
-r.raise_for_status()
-
-with open(mp3, "wb") as f:
-    f.write(r.content)
-
-# ======================
-# Süre hesapla
-# ======================
+# 2️⃣ MP3 süresi
 duration = subprocess.check_output([
     "ffprobe", "-i", mp3,
     "-show_entries", "format=duration",
@@ -33,47 +27,49 @@ duration = subprocess.check_output([
 duration = int(float(duration)) + 10
 print("⏱ Süre:", duration)
 
-# ======================
-# YouTube fragman indir
-# ======================
+# 3️⃣ TMDB trailer bul
+url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/videos?api_key={TMDB_KEY}&language=tr-TR"
+videos = requests.get(url).json()["results"]
+
+trailer = None
+for v in videos:
+    if v["type"] == "Trailer" and v["site"] == "Apple Trailers":
+        trailer = v
+        break
+
+if not trailer:
+    trailer = next((v for v in videos if v["type"] == "Trailer"), None)
+
+if not trailer:
+    raise Exception("⛔ Trailer bulunamadı")
+
+video_url = trailer["key"]  # Apple CDN linki
+
+# 4️⃣ Trailer indir
 subprocess.run([
-    "yt-dlp",
-"--extractor-args", "youtube:player_client=android",
-"--no-check-certificate",
-"-f", "bv*[ext=mp4]/bv*",
-"--no-audio",
-"-o", "video.mp4",
-f"ytsearch1:{film_adi} fragman"
+    "ffmpeg", "-y",
+    "-i", video_url,
+    "-t", str(duration),
+    "-c", "copy",
+    "video.mp4"
 ], check=True)
 
-# ======================
-# Kes + Ses bindir
-# ======================
+# 5️⃣ Sesle birleştir
 subprocess.run([
     "ffmpeg", "-y",
     "-i", "video.mp4",
     "-i", mp3,
-    "-t", str(duration),
     "-shortest",
     "-c:v", "copy",
     "fragman.mp4"
 ], check=True)
 
-# ======================
-# Callback
-# ======================
+# 6️⃣ Callback
 requests.post(
     callback,
     files={"video": open("fragman.mp4", "rb")},
     data={"film_id": film_id},
-    timeout=60
+    timeout=120
 )
 
 print("✅ Fragman gönderildi")
-
-# ======================
-# Temizlik
-# ======================
-for f in [mp3, "video.mp4", "fragman.mp4"]:
-    if os.path.exists(f):
-        os.remove(f)
