@@ -1,195 +1,250 @@
 #!/usr/bin/env python3
 """
 fragman.py - YouTube'dan fragman indir, TTS sesi ile birleştir
+PHP callback sisteminize uygun şekilde
 """
 
 import os
-import sys
 import json
 import requests
-import yt_dlp
 import subprocess
-from moviepy.editor import VideoFileClip, AudioFileClip, CompositeAudioClip
+import yt_dlp
+import tempfile
+import shutil
 
-# GitHub event verilerini al
-def get_github_data():
-    event_path = os.environ.get('GITHUB_EVENT_PATH')
-    if event_path:
-        with open(event_path, 'r') as f:
-            return json.load(f)
-    return None
+# ============================================
+# 1️⃣ GITHUB EVENT VERİLERİNİ AL
+# ============================================
+event = json.load(open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8"))
+p = event["client_payload"]
 
-def get_tmdb_trailer(tmdb_id, api_key):
-    """TMDB'den fragman URL'sini al"""
-    url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/videos"
+film_id  = p["film_id"]
+tmdb_id  = p["tmdb_id"]
+film_adi = p["film_adi"]
+ses_url  = p["ses_url"]
+callback = p["callback"]
+
+TMDB_KEY = os.environ["TMDB_API_KEY"]
+
+print(f"🎬 Film: {film_adi}")
+print(f"🆔 Film ID: {film_id}, TMDB ID: {tmdb_id}")
+
+# ============================================
+# 2️⃣ TTS SESİNİ İNDİR
+# ============================================
+print("🔊 TTS sesi indiriliyor...")
+mp3_file = f"ses_{film_id}.mp3"
+try:
+    response = requests.get(ses_url, timeout=30)
+    response.raise_for_status()
+    with open(mp3_file, "wb") as f:
+        f.write(response.content)
+    print(f"✅ TTS indirildi: {mp3_file} ({os.path.getsize(mp3_file)} bytes)")
+except Exception as e:
+    print(f"❌ TTS indirme hatası: {e}")
+    exit(1)
+
+# ============================================
+# 3️⃣ TTS SÜRESİNİ ÖLÇ
+# ============================================
+try:
+    duration_cmd = [
+        "ffprobe", "-i", mp3_file,
+        "-show_entries", "format=duration",
+        "-v", "quiet", "-of", "csv=p=0"
+    ]
+    duration = subprocess.check_output(duration_cmd).decode().strip()
+    tts_duration = float(duration)
+    print(f"⏱️ TTS süresi: {tts_duration:.2f} saniye")
+except Exception as e:
+    print(f"⚠️ FFprobe çalışmadı, varsayılan süre kullanılıyor: {e}")
+    tts_duration = 180  # fallback süre
+
+# ============================================
+# 4️⃣ TMDB'DEN YOUTUBE FRAGMAN URL'SİNİ BUL
+# ============================================
+def get_youtube_trailer(tmdb_id, api_key):
+    """TMDB'den YouTube trailer URL'sini al"""
+    tmdb_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/videos"
     params = {
         'api_key': api_key,
         'language': 'tr-TR'
     }
     
     try:
-        response = requests.get(url, params=params)
+        response = requests.get(tmdb_url, params=params, timeout=10)
         data = response.json()
         
-        # Önce trailer bul
+        # Önce resmi trailer'ı bul
         for video in data.get('results', []):
             if video.get('type') == 'Trailer' and video.get('site') == 'YouTube':
-                return f"https://www.youtube.com/watch?v={video['key']}"
+                video_id = video['key']
+                title = video.get('name', 'Trailer')
+                print(f"🎯 Resmi trailer bulundu: {title}")
+                return f"https://www.youtube.com/watch?v={video_id}"
         
         # Trailer yoksa herhangi bir YouTube videosu
         for video in data.get('results', []):
             if video.get('site') == 'YouTube':
-                return f"https://www.youtube.com/watch?v={video['key']}"
+                video_id = video['key']
+                title = video.get('name', 'Video')
+                print(f"📹 YouTube videosu bulundu: {title}")
+                return f"https://www.youtube.com/watch?v={video_id}"
                 
     except Exception as e:
         print(f"❌ TMDB hatası: {e}")
     
     return None
 
-def download_youtube_video(url, output_path='trailer.mp4'):
-    """YouTube'dan video indir"""
-    ydl_opts = {
-        'format': 'best[height<=720]/best',  # 720p veya daha iyi
-        'outtmpl': output_path,
-        'quiet': False,
-        'no_warnings': True,
-        'extract_flat': False,
-    }
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            print(f"✅ İndirildi: {info['title']}")
-            return True
-    except Exception as e:
-        print(f"❌ YouTube indirme hatası: {e}")
-        return False
+print("🔍 TMDB'den YouTube fragmanı aranıyor...")
+youtube_url = get_youtube_trailer(tmdb_id, TMDB_KEY)
 
-def mix_audio_video(video_path, tts_path, output_path='final.mp4'):
-    """Video ve TTS sesini birleştir"""
-    try:
-        # Video'yu yükle
-        video = VideoFileClip(video_path)
+if not youtube_url:
+    print("❌ YouTube fragmanı bulunamadı")
+    exit(1)
+
+print(f"📹 YouTube URL: {youtube_url}")
+
+# ============================================
+# 5️⃣ YOUTUBE'DAN FRAGMAN İNDİR
+# ============================================
+print("📥 YouTube'dan fragman indiriliyor...")
+trailer_file = f"trailer_{film_id}.mp4"
+
+ydl_opts = {
+    'format': 'best[height<=720][ext=mp4]/best[height<=720]',
+    'outtmpl': trailer_file,
+    'quiet': False,
+    'no_warnings': False,
+    'extract_flat': False,
+    'noplaylist': True,
+    'socket_timeout': 30,
+}
+
+try:
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(youtube_url, download=True)
+        print(f"✅ Fragman indirildi: {info['title']}")
+        print(f"   📏 Çözünürlük: {info.get('height', 'N/A')}p")
+        print(f"   ⏱️  Süre: {info.get('duration', 'N/A')} saniye")
+except Exception as e:
+    print(f"❌ YouTube indirme hatası: {e}")
+    exit(1)
+
+# ============================================
+# 6️⃣ FRAGMAN SÜRESİNİ ÖLÇ
+# ============================================
+try:
+    duration_cmd = [
+        "ffprobe", "-i", trailer_file,
+        "-show_entries", "format=duration",
+        "-v", "quiet", "-of", "csv=p=0"
+    ]
+    duration = subprocess.check_output(duration_cmd).decode().strip()
+    trailer_duration = float(duration)
+    print(f"⏱️ Fragman süresi: {trailer_duration:.2f} saniye")
+except Exception as e:
+    print(f"⚠️ Fragman süresi ölçülemedi: {e}")
+    trailer_duration = tts_duration
+
+# ============================================
+# 7️⃣ VİDEO VE SESİ BİRLEŞTİR
+# ============================================
+# Hangi süreyi kullanacağımızı belirle
+# TTS veya fragmandan hangisi daha kısa?
+target_duration = min(tts_duration, trailer_duration)
+print(f"🎯 Hedef süre: {target_duration:.2f} saniye")
+
+output_file = f"fragman_{film_id}.mp4"
+
+# FFmpeg komutu: Fragmanı kısalt, ses seviyesini düşür, TTS ekle
+ffmpeg_cmd = [
+    "ffmpeg", "-y",
+    "-i", trailer_file,
+    "-i", mp3_file,
+    "-filter_complex",
+    # Video: ilk target_duration saniyesini al, 720p'ye scale et
+    f"[0:v]scale=1280:720:force_original_aspect_ratio=decrease,"
+    f"pad=1280:720:(ow-iw)/2:(oh-ih)/2,"
+    f"trim=duration={target_duration},setpts=PTS-STARTPTS[video];"
+    
+    # Orijinal ses: ilk target_duration saniyesini al, ses seviyesini %20'ye düşür
+    f"[0:a]atrim=duration={target_duration},asetpts=PTS-STARTPTS,"
+    f"volume=0.2[orig_audio];"
+    
+    # TTS sesi: ilk target_duration saniyesini al
+    f"[1:a]atrim=duration={target_duration},asetpts=PTS-STARTPTS[tts_audio];"
+    
+    # Sesleri birleştir
+    f"[orig_audio][tts_audio]amix=inputs=2:duration=longest[final_audio]",
+    
+    "-map", "[video]",
+    "-map", "[final_audio]",
+    "-c:v", "libx264",
+    "-preset", "fast",
+    "-crf", "23",
+    "-c:a", "aac",
+    "-b:a", "192k",
+    "-shortest",
+    output_file
+]
+
+print("🔨 Video ve ses birleştiriliyor...")
+try:
+    subprocess.run(ffmpeg_cmd, check=True, capture_output=False)
+    print(f"✅ Video işlendi: {output_file}")
+except subprocess.CalledProcessError as e:
+    print(f"❌ FFmpeg hatası: {e}")
+    exit(1)
+
+# ============================================
+# 8️⃣ DOSYA BOYUTUNU KONTROL ET
+# ============================================
+file_size = os.path.getsize(output_file)
+print(f"💾 Dosya boyutu: {file_size / (1024*1024):.2f} MB")
+
+if file_size == 0:
+    print("❌ Oluşturulan video boş!")
+    exit(1)
+
+# ============================================
+# 9️⃣ CALLBACK'E GÖNDER
+# ============================================
+print(f"📤 Callback'e gönderiliyor: {callback}")
+try:
+    with open(output_file, 'rb') as video_file:
+        files = {'video': (f'fragman_{film_id}.mp4', video_file, 'video/mp4')}
+        data = {'film_id': film_id}
         
-        # TTS sesini yükle
-        tts_audio = AudioFileClip(tts_path)
-        
-        # Orijinal sesi %20 seviyesine düşür
-        original_audio = video.audio.volumex(0.2)
-        
-        # TTS sesinin süresini videoya uydur
-        # Eğer TTS daha kısa ise, videoyu kısalt
-        if tts_audio.duration < video.duration:
-            video = video.subclip(0, tts_audio.duration)
-            original_audio = video.audio.volumex(0.2) if video.audio else None
-        
-        # Sesleri birleştir
-        if original_audio:
-            final_audio = CompositeAudioClip([original_audio, tts_audio])
-        else:
-            final_audio = tts_audio
-        
-        # Yeni videoyu oluştur
-        final_video = video.set_audio(final_audio)
-        
-        # Yaz (hızlı encode için preset)
-        final_video.write_videofile(
-            output_path,
-            codec='libx264',
-            audio_codec='aac',
-            temp_audiofile='temp-audio.m4a',
-            remove_temp=True,
-            preset='fast'  # ultrafast, superfast, veryfast, faster, fast, medium
+        response = requests.post(
+            callback,
+            files=files,
+            data=data,
+            timeout=120
         )
         
-        # Belleği temizle
-        video.close()
-        tts_audio.close()
-        final_video.close()
+        print(f"📡 HTTP {response.status_code}")
+        print(f"📨 Yanıt: {response.text}")
         
-        print(f"✅ Video işlendi: {output_path}")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Video işleme hatası: {e}")
-        return False
+        if response.status_code == 200:
+            print("✅ Callback başarılı!")
+        else:
+            print(f"❌ Callback hatası: {response.status_code}")
+            
+except Exception as e:
+    print(f"❌ Callback gönderme hatası: {e}")
+    exit(1)
 
-def main():
-    # 1. GitHub event verilerini al
-    event_data = get_github_data()
-    if not event_data:
-        print("❌ GitHub event verisi alınamadı")
-        sys.exit(1)
-    
-    client_payload = event_data['client_payload']
-    film_id = client_payload['film_id']
-    tmdb_id = client_payload['tmdb_id']
-    film_adi = client_payload['film_adi']
-    ses_url = client_payload['ses_url']
-    callback_url = client_payload['callback']
-    
-    print(f"🎬 Film: {film_adi} (ID: {film_id})")
-    
-    # 2. TMDB API Key
-    tmdb_api_key = os.environ.get('TMDB_API_KEY')
-    if not tmdb_api_key:
-        print("❌ TMDB_API_KEY bulunamadı")
-        sys.exit(1)
-    
-    # 3. TMDB'den fragman URL'sini al
-    print("🔍 TMDB'den fragman aranıyor...")
-    youtube_url = get_tmdb_trailer(tmdb_id, tmdb_api_key)
-    
-    if not youtube_url:
-        print("❌ YouTube fragmanı bulunamadı")
-        sys.exit(1)
-    
-    print(f"📹 YouTube URL: {youtube_url}")
-    
-    # 4. YouTube'dan fragmanı indir
-    trailer_path = f"trailer_{film_id}.mp4"
-    if not download_youtube_video(youtube_url, trailer_path):
-        sys.exit(1)
-    
-    # 5. TTS sesini indir
-    tts_path = f"tts_{film_id}.mp3"
-    try:
-        response = requests.get(ses_url)
-        with open(tts_path, 'wb') as f:
-            f.write(response.content)
-        print(f"🔊 TTS indirildi: {tts_path}")
-    except Exception as e:
-        print(f"❌ TTS indirme hatası: {e}")
-        sys.exit(1)
-    
-    # 6. Video ve sesi birleştir
-    output_path = f"final_{film_id}.mp4"
-    if not mix_audio_video(trailer_path, tts_path, output_path):
-        sys.exit(1)
-    
-    # 7. Callback'e gönder
-    try:
-        with open(output_path, 'rb') as video_file:
-            files = {'video': (output_path, video_file, 'video/mp4')}
-            data = {'film_id': film_id}
-            
-            print(f"📤 Callback'e gönderiliyor: {callback_url}")
-            response = requests.post(callback_url, files=files, data=data)
-            
-            if response.status_code == 200:
-                print("✅ Callback başarılı")
-            else:
-                print(f"❌ Callback hatası: {response.status_code}")
-                print(response.text)
-                
-    except Exception as e:
-        print(f"❌ Callback gönderme hatası: {e}")
-    
-    # 8. Geçici dosyaları temizle
-    for temp_file in [trailer_path, tts_path, output_path]:
-        if os.path.exists(temp_file):
+# ============================================
+# 🔟 TEMİZLİK
+# ============================================
+print("🧹 Geçici dosyalar temizleniyor...")
+for temp_file in [mp3_file, trailer_file, output_file]:
+    if os.path.exists(temp_file):
+        try:
             os.remove(temp_file)
-            print(f"🧹 Temizlendi: {temp_file}")
+            print(f"   - Silindi: {temp_file}")
+        except Exception as e:
+            print(f"   - Silinemedi {temp_file}: {e}")
 
-if __name__ == "__main__":
-    main()
+print("🎉 Fragman işlemi tamamlandı!")
