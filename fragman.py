@@ -38,10 +38,12 @@ print("⏱ Süre:", duration)
 # ======================
 subprocess.run([
     "yt-dlp",
-    "-f", "bv*[ext=mp4]/bv*",
-    "--no-audio",
-    "-o", "video.mp4",
-    f"ytsearch1:{film_adi} fragman"
+"--extractor-args", "youtube:player_client=android",
+"--no-check-certificate",
+"-f", "bv*[ext=mp4]/bv*",
+"--no-audio",
+"-o", "video.mp4",
+f"ytsearch1:{film_adi} fragman"
 ], check=True)
 
 # ======================
