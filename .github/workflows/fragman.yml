@@ -22,10 +22,11 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 📦 Python Paketleri Kur
+      - name: 📦 Python Paketleri Kur (pytube)
         run: |
-          pip install yt-dlp==2024.4.9
-          pip install requests==2.31.0
+          pip install pytube requests
+          # pytube güncel değilse, şu repo'dan yükle:
+          pip install git+https://github.com/pytube/pytube.git
 
       - name: 🎬 Fragman Üret
         env:
