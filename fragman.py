@@ -111,70 +111,38 @@ print(f"📹 YouTube URL: {youtube_url}")
 # ============================================
 # 5️⃣ YOUTUBE'DAN FRAGMAN İNDİR
 # ============================================
-print("📥 YouTube'dan fragman indiriliyor...")
-trailer_file = f"trailer_{film_id}.mp4"
-
-# YENİ: Güncellenmiş ydl_opts - Anti-bot önlemlerini aşmak için
-ydl_opts = {
-    'format': 'best[height<=720]',
-    'outtmpl': trailer_file,
-    'quiet': False,
-    'no_warnings': False,
-    'extract_flat': False,
-    'noplaylist': True,
-    'socket_timeout': 30,
-    'retries': 10,
-    'fragment_retries': 10,
-    'skip_unavailable_fragments': True,
-    # YENİ EKLENEN: Anti-bot parametreleri
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['android', 'web'],  # Mobil/Web client kullan
-        }
-    },
-    'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate',
-    },
-    # YENİ: Cookie dosyası kullan (eğer varsa)
-    'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
-}
-
-print("🔄 YouTube'a özel parametrelerle indirme deneniyor...")
-
-try:
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        # Önce video bilgilerini al (indirme yapmadan)
-        print("📊 Video bilgileri alınıyor...")
-        info = ydl.extract_info(youtube_url, download=False)
-        print(f"✅ Video bilgileri: {info['title']}")
-        print(f"   📏 Çözünürlük: {info.get('height', 'N/A')}p")
-        print(f"   ⏱️  Süre: {info.get('duration', 'N/A')} saniye")
-        
-        # Şimdi indir
-        print("⬇️  Video indiriliyor...")
-        ydl.download([youtube_url])
-        print(f"✅ Fragman indirildi: {info['title']}")
-        
-except Exception as e:
-    print(f"❌ YouTube indirme hatası: {e}")
-    
-    # ALTERNATİF: Daha basit format deneyelim
-    print("🔄 Alternatif yöntem deneniyor...")
+# fragman.py'ye ekleyin
+def download_with_pytube(youtube_url, output_file):
+    """pytube ile YouTube'dan video indir"""
     try:
-        alt_opts = {
-            'format': '18',  # 360p MP4 - daha az sorun çıkaran format
-            'outtmpl': trailer_file,
-            'quiet': True,
-        }
-        with yt_dlp.YoutubeDL(alt_opts) as ydl:
-            ydl.download([youtube_url])
-        print("✅ Alternatif yöntemle indirildi")
-    except Exception as e2:
-        print(f"❌ Alternatif yöntem de başarısız: {e2}")
-        exit(1)
+        from pytube import YouTube
+        
+        print("📥 pytube ile indirme deneniyor...")
+        yt = YouTube(youtube_url)
+        
+        # En düşük çözünürlüklü MP4'ü seç (daha az sorun)
+        stream = yt.streams.filter(
+            progressive=True, 
+            file_extension='mp4'
+        ).order_by('resolution').asc().first()
+        
+        if not stream:
+            print("❌ Uygun stream bulunamadı")
+            return False
+            
+        print(f"📹 Stream bulundu: {stream.resolution}")
+        stream.download(filename=output_file)
+        print(f"✅ pytube ile indirildi: {output_file}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ pytube hatası: {e}")
+        return False
+
+# Ana kodda yt-dlp yerine:
+if not download_with_pytube(youtube_url, trailer_file):
+    print("❌ Hiçbir yöntem çalışmadı")
+    exit(1)
 
 # ============================================
 # 6️⃣ FRAGMAN SÜRESİNİ ÖLÇ
