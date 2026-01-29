@@ -1,0 +1,32 @@
+name: Fragman Pipeline
+
+on:
+  repository_dispatch:
+    types: [fragman_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Repo Checkout
+        uses: actions/checkout@v4
+
+      - name: 🧱 FFmpeg ve Gerekli Paketler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg python3-pip
+
+      - name: 🐍 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 📦 Python Paketleri
+        run: |
+          pip install yt-dlp moviepy requests pillow
+
+      - name: 🎬 Fragman Üret
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: python fragman.py
