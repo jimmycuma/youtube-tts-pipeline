@@ -84,18 +84,30 @@ subprocess.run([
 
 # 7️⃣ Birleştir
 subprocess.run([
-    "ffmpeg", "-y",
-    "-i", "cover_text.mp4",
-    "-i", "visuals.mp4",
-    "-i", mp3,
-    "-filter_complex",
-    "[0:v][1:v]concat=n=2:v=1:a=0[v]",
-    "-map", "[v]",
-    "-map", "2:a",
-    "-shortest",
-    "-c:v", "libx264",
-    "-pix_fmt", "yuv420p",
-    "fragman.mp4"
+"ffmpeg", "-y",
+"-i", "visuals.mp4",
+"-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,"
+"pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
+"-r", "25",
+"-pix_fmt", "yuv420p",
+"visuals_1080.mp4"
+], check=True)
+
+#cover + visuals + ses
+
+subprocess.run([
+"ffmpeg", "-y",
+"-i", "cover_text.mp4",
+"-i", "visuals_1080.mp4",
+"-i", mp3,
+"-filter_complex",
+"[0:v][1:v]concat=n=2:v=1:a=0[v]",
+"-map", "[v]",
+"-map", "2:a",
+"-shortest",
+"-c:v", "libx264",
+"-pix_fmt", "yuv420p",
+"fragman.mp4"
 ], check=True)
 
 # 8️⃣ Callback
