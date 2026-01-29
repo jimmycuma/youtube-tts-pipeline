@@ -12,22 +12,18 @@ jobs:
       - name: 📥 Repo Checkout
         uses: actions/checkout@v4
 
-      - name: 🐍 Python Kur
+      - name: 🧱 FFmpeg Kur
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: 🐍 Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: 🎥 FFmpeg Kur
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-
-      - name: 📦 Python Paketleri
-        run: |
-          pip install yt-dlp requests
+      - name: 📦 Paketler
+        run: pip install requests pillow
 
       - name: 🎬 Fragman Üret
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-        run: |
-          python fragman.py
+        run: python fragman.py
