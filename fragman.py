@@ -3,7 +3,7 @@ import os, json, requests, subprocess
 event = json.load(open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8"))
 p = event["client_payload"]
 
-film_id  = p["film_id"]
+film_id  = p["id"]
 tmdb_id  = p["tmdb_id"]
 film_adi = p["film_adi"]
 ses_url  = p["ses_url"]
