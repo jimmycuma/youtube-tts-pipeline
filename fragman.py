@@ -109,7 +109,7 @@ subprocess.run([
 requests.post(
     callback,
     files={"video": open("fragman.mp4", "rb")},
-    data={"film_id": film_id},
+    data={"id": film_id},
     timeout=120
 )
 
