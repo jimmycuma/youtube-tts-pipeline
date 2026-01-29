@@ -17,7 +17,12 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 📦 Gerekli Paketler
+      - name: 🔧 FFmpeg Kur
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: 📦 Python Paketleri
         run: |
           pip install yt-dlp requests
 
