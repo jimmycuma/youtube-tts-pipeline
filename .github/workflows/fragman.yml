@@ -7,40 +7,21 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: 📥 Repo Checkout
         uses: actions/checkout@v4
 
-      - name: 🧱 FFmpeg ve Gerekli Paketler Kur
+      - name: 🧱 Temel Paketler
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg python3-pip wget
-
-      - name: 🐍 Python Kurulumu
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: 📦 Python Paketleri Kur (Hibrit)
-        run: |
-          # Pip'i güncelle
-          python -m pip install --upgrade pip
-          
-          # Önce yt-dlp'yi kur (standart yolla)
-          pip install yt-dlp==2024.4.9
-          
-          # Sonra pytube'u kur
-          pip install pytube==15.0.0
-          
-          # Requests'i kur
-          pip install requests==2.31.0
-          
-          # Kurulumu doğrula
-          echo "Kurulan paketler:"
-          pip list | grep -E "yt-dlp|pytube|requests"
+          sudo apt-get install -y ffmpeg wget
+          pip install yt-dlp requests
 
       - name: 🎬 Fragman Üret
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-        run: python fragman.py
+        run: |
+          echo "Başlangıç: $(date)"
+          python fragman.py
+          echo "Bitiş: $(date)"
