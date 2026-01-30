@@ -15,7 +15,7 @@ jobs:
       - name: 🧱 FFmpeg ve Gerekli Paketler Kur
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg python3-pip
+          sudo apt-get install -y ffmpeg python3-pip wget
 
       - name: 🐍 Python Kurulumu
         uses: actions/setup-python@v5
@@ -24,14 +24,23 @@ jobs:
 
       - name: 📦 Python Paketleri Kur (Hibrit)
         run: |
-          # yt-dlp'yi güncelleyerek kur
-          pip install --upgrade yt-dlp
-          pip install pytube requests
+          # Pip'i güncelle
+          python -m pip install --upgrade pip
           
-          # Alternatif: yt-dlp-nightly
-          # pip install --force-reinstall https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.tar.gz
+          # Önce yt-dlp'yi kur (standart yolla)
+          pip install yt-dlp==2024.4.9
+          
+          # Sonra pytube'u kur
+          pip install pytube==15.0.0
+          
+          # Requests'i kur
+          pip install requests==2.31.0
+          
+          # Kurulumu doğrula
+          echo "Kurulan paketler:"
+          pip list | grep -E "yt-dlp|pytube|requests"
 
       - name: 🎬 Fragman Üret
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-        run: python fragman.py
+        run: python fragman.py        run: python fragman.py
