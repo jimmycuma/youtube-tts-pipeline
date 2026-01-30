@@ -1,0 +1,4 @@
+# requirements.txt
+yt-dlp>=2024.4.9
+pytube>=15.0.0
+requests>=2.31.0
