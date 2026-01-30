@@ -24,12 +24,12 @@ jobs:
 
       - name: 📦 Python Paketleri Kur (Hibrit)
         run: |
-    # yt-dlp'yi güncelleyerek kur
-    pip install --upgrade yt-dlp
-    pip install pytube requests
-    
-    # Alternatif: yt-dlp-nightly
-    # pip install --force-reinstall https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.tar.gz
+          # yt-dlp'yi güncelleyerek kur
+          pip install --upgrade yt-dlp
+          pip install pytube requests
+          
+          # Alternatif: yt-dlp-nightly
+          # pip install --force-reinstall https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.tar.gz
 
       - name: 🎬 Fragman Üret
         env:
