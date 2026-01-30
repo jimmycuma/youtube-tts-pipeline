@@ -12,16 +12,13 @@ jobs:
       - name: 📥 Repo Checkout
         uses: actions/checkout@v4
 
-      - name: 🧱 Temel Paketler
+      - name: 🧱 FFmpeg ve yt-dlp
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg wget
-          pip install yt-dlp requests
+          sudo apt-get install -y ffmpeg
+          pip install --upgrade yt-dlp requests
 
       - name: 🎬 Fragman Üret
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-        run: |
-          echo "Başlangıç: $(date)"
-          python fragman.py
-          echo "Bitiş: $(date)"
+        run: python fragman.py
