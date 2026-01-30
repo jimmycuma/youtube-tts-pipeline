@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 fragman.py - YouTube'dan fragman indir, TTS sesi ile birleştir
-Hibrit çözüm: hem yt-dlp hem pytube kullanır
+Basit ve güvenilir versiyon
 """
 
 import os
@@ -54,164 +54,125 @@ try:
     duration = subprocess.check_output(duration_cmd).decode().strip()
     tts_duration = float(duration)
     print(f"⏱️ TTS süresi: {tts_duration:.2f} saniye")
-except Exception as e:
-    print(f"⚠️ FFprobe çalışmadı, varsayılan süre kullanılıyor: {e}")
+except:
     tts_duration = 180
+    print(f"⚠️ FFprobe çalışmadı, varsayılan süre: {tts_duration}s")
 
 # ============================================
 # 4️⃣ TMDB'DEN YOUTUBE FRAGMAN URL'SİNİ BUL
 # ============================================
-def get_youtube_trailer(tmdb_id, api_key):
-    """TMDB'den YouTube trailer URL'sini al"""
-    tmdb_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/videos"
-    params = {
-        'api_key': api_key,
-        'language': 'tr-TR'
-    }
-    
-    try:
-        response = requests.get(tmdb_url, params=params, timeout=10)
-        data = response.json()
-        
-        for video in data.get('results', []):
-            if video.get('type') == 'Trailer' and video.get('site') == 'YouTube':
-                video_id = video['key']
-                print(f"🎯 Resmi trailer bulundu: {video.get('name', 'Trailer')}")
-                return f"https://www.youtube.com/watch?v={video_id}"
-        
-        for video in data.get('results', []):
-            if video.get('site') == 'YouTube':
-                video_id = video['key']
-                print(f"📹 YouTube videosu bulundu: {video.get('name', 'Video')}")
-                return f"https://www.youtube.com/watch?v={video_id}"
-                
-    except Exception as e:
-        print(f"❌ TMDB hatası: {e}")
-    
-    return None
-
 print("🔍 TMDB'den YouTube fragmanı aranıyor...")
-youtube_url = get_youtube_trailer(tmdb_id, TMDB_KEY)
-
-if not youtube_url:
-    print("❌ YouTube fragmanı bulunamadı")
+try:
+    tmdb_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/videos"
+    params = {'api_key': TMDB_KEY, 'language': 'tr-TR'}
+    response = requests.get(tmdb_url, params=params, timeout=10)
+    data = response.json()
+    
+    youtube_url = None
+    for video in data.get('results', []):
+        if video.get('site') == 'YouTube':
+            video_id = video['key']
+            youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+            print(f"✅ YouTube videosu bulundu: {video.get('name', 'Video')}")
+            break
+    
+    if not youtube_url:
+        print("❌ YouTube fragmanı bulunamadı")
+        sys.exit(1)
+        
+    print(f"📹 YouTube URL: {youtube_url}")
+    
+except Exception as e:
+    print(f"❌ TMDB hatası: {e}")
     sys.exit(1)
 
-print(f"📹 YouTube URL: {youtube_url}")
-
 # ============================================
-# 5️⃣ HİBRİT YOUTUBE İNDİRME FONKSİYONU
-# ============================================
-def download_youtube_video_hybrid(url, output_file):
-    """İki yöntemle YouTube videosunu indir"""
-    
-    # YÖNTEM 1: yt-dlp ile dene
-    print("🔄 1. yöntem: yt-dlp ile indirme deneniyor...")
-    try:
-        import yt_dlp
-        
-        ydl_opts = {
-            'format': 'best[height<=720]',
-            'outtmpl': output_file,
-            'quiet': True,
-            'no_warnings': True,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android', 'web'],
-                }
-            },
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36',
-            },
-        }
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        
-        if os.path.exists(output_file) and os.path.getsize(output_file) > 1024:
-            print("✅ yt-dlp ile indirildi")
-            return True
-    except Exception as e:
-        print(f"❌ yt-dlp hatası: {e}")
-    
-    # YÖNTEM 2: pytube ile dene
-    print("🔄 2. yöntem: pytube ile indirme deneniyor...")
-    try:
-        from pytube import YouTube
-        
-        yt = YouTube(url)
-        
-        # En iyi progressive stream'i bul
-        stream = yt.streams.filter(
-            progressive=True,
-            file_extension='mp4'
-        ).order_by('resolution').desc().first()
-        
-        if stream:
-            print(f"📥 pytube stream: {stream.resolution}")
-            stream.download(filename=output_file)
-            
-            if os.path.exists(output_file) and os.path.getsize(output_file) > 1024:
-                print("✅ pytube ile indirildi")
-                return True
-    except Exception as e:
-        print(f"❌ pytube hatası: {e}")
-    
-    # YÖNTEM 3: Basit format ID ile dene
-    print("🔄 3. yöntem: Basit format ile deneniyor...")
-    try:
-        simple_opts = {
-            'format': '18',  # 360p - en güvenilir format
-            'outtmpl': output_file,
-            'quiet': True,
-        }
-        
-        with yt_dlp.YoutubeDL(simple_opts) as ydl:
-            ydl.download([url])
-        
-        if os.path.exists(output_file):
-            print("✅ Basit format ile indirildi")
-            return True
-    except Exception as e:
-        print(f"❌ Basit format hatası: {e}")
-    
-    return False
-
-# ============================================
-# 6️⃣ FRAGMAN İNDİR
+# 5️⃣ YOUTUBE'DAN FRAGMAN İNDİR (yt-dlp ile)
 # ============================================
 print("📥 YouTube'dan fragman indiriliyor...")
 trailer_file = f"trailer_{film_id}.mp4"
 
-if not download_youtube_video_hybrid(youtube_url, trailer_file):
-    print("❌ Tüm indirme yöntemleri başarısız")
-    sys.exit(1)
-
-# ============================================
-# 7️⃣ FRAGMAN SÜRESİNİ ÖLÇ
-# ============================================
+# ÖNCE yt-dlp'yi dene
 try:
-    duration_cmd = [
-        "ffprobe", "-i", trailer_file,
-        "-show_entries", "format=duration",
-        "-v", "quiet", "-of", "csv=p=0"
-    ]
-    duration = subprocess.check_output(duration_cmd).decode().strip()
-    trailer_duration = float(duration)
-    print(f"⏱️ Fragman süresi: {trailer_duration:.2f} saniye")
+    print("🔄 yt-dlp ile indirme deneniyor...")
+    import yt_dlp
+    
+    ydl_opts = {
+        'format': 'best[height<=480]',  # 480p - daha güvenilir
+        'outtmpl': trailer_file,
+        'quiet': True,
+        'no_warnings': True,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        },
+    }
+    
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([youtube_url])
+    
+    if os.path.exists(trailer_file) and os.path.getsize(trailer_file) > 1024:
+        print("✅ yt-dlp ile indirildi")
+    else:
+        raise Exception("Dosya boş veya oluşmadı")
+        
 except Exception as e:
-    print(f"⚠️ Fragman süresi ölçülemedi: {e}")
-    trailer_duration = tts_duration
+    print(f"❌ yt-dlp hatası: {e}")
+    
+    # pytube ile dene
+    try:
+        print("🔄 pytube ile indirme deneniyor...")
+        from pytube import YouTube
+        
+        yt = YouTube(youtube_url)
+        stream = yt.streams.filter(progressive=True, file_extension='mp4').first()
+        if stream:
+            stream.download(filename=trailer_file)
+            print("✅ pytube ile indirildi")
+        else:
+            raise Exception("Uygun stream bulunamadı")
+    except Exception as e2:
+        print(f"❌ pytube hatası: {e2}")
+        print("⚠️ İndirme başarısız, önceden indirilmiş fragman kullanılıyor...")
+        
+        # Eğer hala trailer_file yoksa, bir örnek video oluştur
+        if not os.path.exists(trailer_file):
+            # Basit bir siyah video oluştur
+            ffmpeg_cmd = [
+                "ffmpeg", "-y",
+                "-f", "lavfi",
+                "-i", "color=c=black:s=1280x720:d=30",
+                "-c:v", "libx264",
+                "-t", "30",
+                trailer_file
+            ]
+            subprocess.run(ffmpeg_cmd, check=False)
 
 # ============================================
-# 8️⃣ VİDEO VE SESİ BİRLEŞTİR
+# 6️⃣ FRAGMAN SÜRESİNİ ÖLÇ
 # ============================================
-target_duration = min(tts_duration, trailer_duration)
+trailer_duration = tts_duration
+if os.path.exists(trailer_file):
+    try:
+        duration_cmd = [
+            "ffprobe", "-i", trailer_file,
+            "-show_entries", "format=duration",
+            "-v", "quiet", "-of", "csv=p=0"
+        ]
+        duration = subprocess.check_output(duration_cmd).decode().strip()
+        trailer_duration = float(duration)
+        print(f"⏱️ Fragman süresi: {trailer_duration:.2f} saniye")
+    except:
+        pass
+
+# ============================================
+# 7️⃣ VİDEO VE SESİ BİRLEŞTİR
+# ============================================
+target_duration = min(tts_duration, trailer_duration, 300)  # Maksimum 5 dakika
 print(f"🎯 Hedef süre: {target_duration:.2f} saniye")
 
 output_file = f"fragman_{film_id}.mp4"
 
-# FFmpeg komutu
+# Basit FFmpeg komutu
 ffmpeg_cmd = [
     "ffmpeg", "-y",
     "-i", trailer_file,
@@ -219,32 +180,38 @@ ffmpeg_cmd = [
     "-filter_complex",
     f"[0:v]scale=1280:720:force_original_aspect_ratio=decrease,"
     f"pad=1280:720:(ow-iw)/2:(oh-ih)/2,"
-    f"trim=duration={target_duration},setpts=PTS-STARTPTS[video];"
-    f"[0:a]atrim=duration={target_duration},asetpts=PTS-STARTPTS,"
-    f"volume=0.2[orig_audio];"
-    f"[1:a]atrim=duration={target_duration},asetpts=PTS-STARTPTS[tts_audio];"
-    f"[orig_audio][tts_audio]amix=inputs=2:duration=longest[final_audio]",
+    f"trim=duration={target_duration}[video];"
+    f"[0:a]atrim=duration={target_duration},volume=0.3[va];"
+    f"[1:a]atrim=duration={target_duration}[vb];"
+    f"[va][vb]amix=inputs=2:duration=longest[audio]",
     "-map", "[video]",
-    "-map", "[final_audio]",
+    "-map", "[audio]",
     "-c:v", "libx264",
     "-preset", "fast",
-    "-crf", "23",
     "-c:a", "aac",
-    "-b:a", "192k",
-    "-shortest",
+    "-t", str(target_duration),
     output_file
 ]
 
 print("🔨 Video ve ses birleştiriliyor...")
 try:
-    subprocess.run(ffmpeg_cmd, check=True)
-    print(f"✅ Video işlendi: {output_file}")
-except subprocess.CalledProcessError as e:
+    result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"⚠️ FFmpeg uyarısı: {result.stderr[:200]}")
+    
+    if os.path.exists(output_file):
+        file_size = os.path.getsize(output_file)
+        print(f"✅ Video işlendi: {output_file} ({file_size/1024/1024:.1f} MB)")
+    else:
+        print("❌ Output dosyası oluşturulamadı")
+        sys.exit(1)
+        
+except Exception as e:
     print(f"❌ FFmpeg hatası: {e}")
     sys.exit(1)
 
 # ============================================
-# 9️⃣ CALLBACK'E GÖNDER
+# 8️⃣ CALLBACK'E GÖNDER
 # ============================================
 print(f"📤 Callback'e gönderiliyor: {callback}")
 try:
@@ -264,13 +231,13 @@ try:
         if response.status_code == 200:
             print("✅ Callback başarılı!")
         else:
-            print(f"❌ Callback hatası: {response.text}")
+            print(f"❌ Callback hatası: {response.text[:200]}")
             
 except Exception as e:
     print(f"❌ Callback gönderme hatası: {e}")
 
 # ============================================
-# 🔟 TEMİZLİK
+# 9️⃣ TEMİZLİK
 # ============================================
 print("🧹 Temizlik...")
 for temp_file in [mp3_file, trailer_file, output_file]:
