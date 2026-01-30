@@ -22,11 +22,14 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 📦 Python Paketleri Kur (pytube)
+      - name: 📦 Python Paketleri Kur (Hibrit)
         run: |
-          pip install pytube requests
-          # pytube güncel değilse, şu repo'dan yükle:
-          pip install git+https://github.com/pytube/pytube.git
+    # yt-dlp'yi güncelleyerek kur
+    pip install --upgrade yt-dlp
+    pip install pytube requests
+    
+    # Alternatif: yt-dlp-nightly
+    # pip install --force-reinstall https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.tar.gz
 
       - name: 🎬 Fragman Üret
         env:
