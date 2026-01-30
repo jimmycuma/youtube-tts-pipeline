@@ -43,4 +43,4 @@ jobs:
       - name: 🎬 Fragman Üret
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-        run: python fragman.py        run: python fragman.py
+        run: python fragman.py
