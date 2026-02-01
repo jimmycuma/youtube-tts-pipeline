@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 fragman.py - 1+3+1 Otomatik Film İnceleme Sistemi
-Gelişmiş Loglama ve Çoklu API Key Desteği
+Gelişmiş Loglama ve Çoklu İndirme Sistemi
 """
 
 import os, json, requests, subprocess, time, sys, tempfile, random, logging
@@ -41,7 +41,7 @@ logger = setup_logging()
 def create_unified_cover(tmdb_id, film_adi, cover_duration=5):
     """TMDB görselleriyle sinematik kapak oluştur."""
     
-    logger.info(f"🎨 Sinematik kapak oluşturuluyor: {film_adi} (TMDB: {tmdb_id})")
+    logger.info(f"🎨 Sinematik kapak oluşturuluyor: {film_adi}")
     
     TMDB_KEY = os.environ.get("TMDB_API_KEY", "")
     if not TMDB_KEY:
@@ -53,33 +53,33 @@ def create_unified_cover(tmdb_id, film_adi, cover_duration=5):
     
     try:
         # TMDB'den film detaylarını al
-        logger.debug(f"TMDB API çağrısı: https://api.themoviedb.org/3/movie/{tmdb_id}")
+        logger.info(f"📡 TMDB API çağrısı: https://api.themoviedb.org/3/movie/{tmdb_id}")
         tmdb_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}"
         params = {'api_key': TMDB_KEY, 'language': 'tr-TR', 'append_to_response': 'images'}
         response = requests.get(tmdb_url, params=params, timeout=15)
-        logger.debug(f"TMDB Response Status: {response.status_code}")
+        logger.info(f"📡 TMDB Response Status: {response.status_code}")
         
         if response.status_code != 200:
-            logger.error(f"TMDB API hatası: {response.status_code} - {response.text[:200]}")
+            logger.error(f"❌ TMDB API hatası: {response.status_code}")
             return create_simple_cover(film_adi, cover_file)
         
         film_data = response.json()
-        logger.debug(f"TMDB Data: {film_data.get('title', 'Bilinmeyen')}")
+        logger.info(f"✅ TMDB Data alındı: {film_data.get('title', 'Bilinmeyen')}")
         
         # Görselleri seç
         backdrop_path = film_data.get('backdrop_path')
         poster_path = film_data.get('poster_path')
         
-        logger.debug(f"Backdrop Path: {backdrop_path}")
-        logger.debug(f"Poster Path: {poster_path}")
+        logger.info(f"🖼️ Backdrop Path: {backdrop_path}")
+        logger.info(f"🖼️ Poster Path: {poster_path}")
         
         if not backdrop_path and film_data.get('images', {}).get('backdrops'):
             backdrop_path = film_data['images']['backdrops'][0]['file_path']
-            logger.debug(f"Alternatif Backdrop: {backdrop_path}")
+            logger.info(f"🔄 Alternatif Backdrop: {backdrop_path}")
         
         if not poster_path and film_data.get('images', {}).get('posters'):
             poster_path = film_data['images']['posters'][0]['file_path']
-            logger.debug(f"Alternatif Poster: {poster_path}")
+            logger.info(f"🔄 Alternatif Poster: {poster_path}")
         
         # Görselleri indir
         base_url = "https://image.tmdb.org/t/p/original"
@@ -90,22 +90,24 @@ def create_unified_cover(tmdb_id, film_adi, cover_duration=5):
         if backdrop_path:
             backdrop_url = f"{base_url}{backdrop_path}"
             backdrop_file = f"backdrop_{tmdb_id}.jpg"
-            logger.debug(f"Backdrop indiriliyor: {backdrop_url}")
+            logger.info(f"📥 Backdrop indiriliyor: {backdrop_url}")
             
             with open(backdrop_file, 'wb') as f:
                 f.write(requests.get(backdrop_url, timeout=20).content)
             temp_files.append(backdrop_file)
-            logger.debug(f"Backdrop indirildi: {backdrop_file} ({os.path.getsize(backdrop_file)} bytes)")
+            file_size = os.path.getsize(backdrop_file)
+            logger.info(f"✅ Backdrop indirildi: {file_size/1024:.1f} KB")
         
         if poster_path:
             poster_url = f"{base_url}{poster_path}"
             poster_file = f"poster_{tmdb_id}.jpg"
-            logger.debug(f"Poster indiriliyor: {poster_url}")
+            logger.info(f"📥 Poster indiriliyor: {poster_url}")
             
             with open(poster_file, 'wb') as f:
                 f.write(requests.get(poster_url, timeout=20).content)
             temp_files.append(poster_file)
-            logger.debug(f"Poster indirildi: {poster_file} ({os.path.getsize(poster_file)} bytes)")
+            file_size = os.path.getsize(poster_file)
+            logger.info(f"✅ Poster indirildi: {file_size/1024:.1f} KB")
         
         # Film bilgileri
         year = film_data.get('release_date', '')[:4] if film_data.get('release_date') else ''
@@ -114,7 +116,7 @@ def create_unified_cover(tmdb_id, film_adi, cover_duration=5):
         # FFmpeg komutu - SİNEMATİK KAPAK
         font_path = "assets/font.ttf"
         if not os.path.exists(font_path):
-            logger.warning(f"Font bulunamadı: {font_path}, sistem fontu kullanılacak")
+            logger.warning(f"⚠️ Font bulunamadı: {font_path}, sistem fontu kullanılacak")
             font_path = "Arial"
         
         filter_parts = []
@@ -166,7 +168,7 @@ def create_unified_cover(tmdb_id, film_adi, cover_duration=5):
         )
         
         filter_complex = ";".join(filter_parts)
-        logger.debug(f"FFmpeg Filter Complex: {filter_complex[:500]}...")
+        logger.debug(f"🔧 FFmpeg Filter Complex: {filter_complex[:300]}...")
         
         ffmpeg_cmd = [
             'ffmpeg', '-y',
@@ -180,7 +182,7 @@ def create_unified_cover(tmdb_id, film_adi, cover_duration=5):
             cover_file
         ]
         
-        logger.debug(f"FFmpeg komutu çalıştırılıyor: {' '.join(ffmpeg_cmd)}")
+        logger.info(f"🎬 FFmpeg kapak oluşturuyor: {cover_file}")
         result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=120)
         
         if result.returncode == 0:
@@ -198,16 +200,17 @@ def create_unified_cover(tmdb_id, film_adi, cover_duration=5):
     
     finally:
         # Temizlik
+        logger.info("🧹 Kapak geçici dosyaları temizleniyor...")
         for f in temp_files:
             if os.path.exists(f):
                 try:
                     os.remove(f)
-                    logger.debug(f"Geçici dosya silindi: {f}")
+                    logger.debug(f"✅ Geçici dosya silindi: {f}")
                 except:
-                    pass
+                    logger.warning(f"⚠️ Geçici dosya silinemedi: {f}")
     
     # Fallback: Basit kapak
-    logger.info("Fallback: Basit kapak oluşturuluyor")
+    logger.info("🔄 Fallback: Basit kapak oluşturuluyor")
     return create_simple_cover(film_adi, cover_file)
 
 def create_simple_cover(film_adi, output_file, duration=5):
@@ -221,7 +224,7 @@ def create_simple_cover(film_adi, output_file, duration=5):
             '-c:v', 'libx264', '-t', str(duration),
             output_file
         ]
-        logger.debug(f"Basit kapak komutu: {' '.join(cmd)}")
+        logger.info(f"🎬 Basit kapak oluşturuluyor")
         subprocess.run(cmd, check=True, timeout=30)
         logger.info(f"✅ Basit kapak oluşturuldu: {output_file}")
         return output_file
@@ -230,28 +233,20 @@ def create_simple_cover(film_adi, output_file, duration=5):
         return None
 
 # ============================================
-# 2. GELİŞMİŞ İNDİRME SİSTEMLERİ
+# 2. İNDİRME SİSTEMLERİ
 # ============================================
 def download_ytdlp_enhanced(youtube_url, output_file, max_attempts=3):
     """Gelişmiş yt-dlp ile YouTube videosu indir"""
     
-    logger.info(f"YT-DLP ile indirme başlatıldı: {youtube_url}")
+    logger.info(f"🔗 YT-DLP başlatıldı: {youtube_url}")
     
     for attempt in range(max_attempts):
         try:
             logger.info(f"🔄 YT-DLP Deneme {attempt+1}/{max_attempts}")
             
-            # Cookies dosyası oluştur
-            cookies_file = "cookies.txt"
-            if not os.path.exists(cookies_file):
-                with open(cookies_file, 'w') as f:
-                    f.write("# YouTube cookies\n")
-                logger.debug("Cookies dosyası oluşturuldu")
-            
-            # Aggresif yt-dlp komutu
+            # Agresif yt-dlp ayarları
             cmd = [
                 'yt-dlp',
-                '--cookies', cookies_file,
                 '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 '--referer', 'https://www.youtube.com/',
                 '--socket-timeout', '60',
@@ -260,25 +255,24 @@ def download_ytdlp_enhanced(youtube_url, output_file, max_attempts=3):
                 '--throttled-rate', '100K',
                 '--no-check-certificate',
                 '--geo-bypass',
+                '--geo-bypass-country', 'US',
                 '--extractor-args', 'youtube:player_client=android',
                 '--format', 'best[height<=720]/best[height<=480]/best',
                 '--output', output_file,
                 '--verbose',
+                '--force-ipv4',
                 youtube_url
             ]
             
-            logger.debug(f"YT-DLP komutu: {' '.join(cmd[:5])}...")
+            logger.debug(f"🤖 YT-DLP komutu: {' '.join(cmd[:10])}...")
             
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
             
             # Log detayları
             if result.stdout:
-                logger.debug(f"YT-DLP stdout: {result.stdout[-500:]}")
+                logger.debug(f"📄 YT-DLP stdout: {result.stdout[-500:]}")
             if result.stderr:
-                if "ERROR" in result.stderr or "WARNING" in result.stderr:
-                    logger.error(f"YT-DLP stderr: {result.stderr[-500:]}")
-                else:
-                    logger.debug(f"YT-DLP stderr: {result.stderr[-200:]}")
+                logger.error(f"❌ YT-DLP stderr: {result.stderr[-500:]}")
             
             if result.returncode == 0:
                 if os.path.exists(output_file):
@@ -292,7 +286,7 @@ def download_ytdlp_enhanced(youtube_url, output_file, max_attempts=3):
                 else:
                     logger.error("⚠️ Çıktı dosyası oluşmadı")
             else:
-                logger.error(f"YT-DLP exit code: {result.returncode}")
+                logger.error(f"❌ YT-DLP exit code: {result.returncode}")
                         
         except subprocess.TimeoutExpired:
             logger.error(f"⏱️ YT-DLP zaman aşımı (300 saniye)")
@@ -300,19 +294,217 @@ def download_ytdlp_enhanced(youtube_url, output_file, max_attempts=3):
             logger.error(f"❌ YT-DLP hatası: {str(e)}", exc_info=True)
         
         if attempt < max_attempts - 1:
-            wait_time = (attempt + 1) * 5
+            wait_time = (attempt + 1) * 10
             logger.info(f"⏳ {wait_time} saniye bekleniyor...")
             time.sleep(wait_time)
     
     logger.error("❌ YT-DLP ile indirme başarısız")
     return False
 
+def download_via_rapidapi_direct(youtube_id, output_file):
+    """Doğrudan RapidAPI ile video indir (yeni endpoint)"""
+    
+    rapidapi_keys = get_all_rapidapi_keys()
+    
+    if not rapidapi_keys:
+        logger.warning("⚠️ Hiç RapidAPI key bulunamadı!")
+        return False
+    
+    logger.info(f"🔑 {len(rapidapi_keys)} RapidAPI anahtarı ile deneniyor...")
+    
+    # API endpoint bilgileri
+    api_endpoint = "youtube-video-fast-downloader-24-7.p.rapidapi.com"
+    api_path = f"/download_video/{youtube_id}?quality=247"
+    
+    for i, api_key in enumerate(rapidapi_keys):
+        try:
+            logger.info(f"🔑 RapidAPI Key {i+1}/{len(rapidapi_keys)} deneniyor: {api_key[:8]}...")
+            
+            headers = {
+                'x-rapidapi-key': api_key,
+                'x-rapidapi-host': api_endpoint
+            }
+            
+            import http.client
+            
+            conn = http.client.HTTPSConnection(api_endpoint)
+            conn.request("GET", api_path, headers=headers)
+            
+            res = conn.getresponse()
+            status_code = res.status
+            logger.info(f"📡 RapidAPI Response: {status_code}")
+            
+            if status_code == 200:
+                data = res.read().decode("utf-8")
+                logger.info(f"✅ RapidAPI JSON yanıtı alındı")
+                
+                # JSON'u parse et
+                try:
+                    video_info = json.loads(data)
+                    logger.info(f"📊 Video Bilgileri:")
+                    logger.info(f"  - Boyut: {video_info.get('size', 'Bilinmiyor')} bytes")
+                    logger.info(f"  - Bitrate: {video_info.get('bitrate', 'Bilinmiyor')}")
+                    logger.info(f"  - Kalite: {video_info.get('quality', 'Bilinmiyor')}")
+                    logger.info(f"  - Tür: {video_info.get('type', 'Bilinmiyor')}")
+                    logger.info(f"  - Açıklama: {video_info.get('comment', 'Bilinmiyor')}")
+                    
+                    # Video URL'sini al
+                    video_url = video_info.get('file')
+                    reserved_url = video_info.get('reserved_file', video_url)
+                    
+                    if not video_url:
+                        logger.error("❌ JSON'da video URL'si yok")
+                        continue
+                    
+                    logger.info(f"🔗 Video URL: {video_url[:80]}...")
+                    logger.info(f"🔗 Yedek URL: {reserved_url[:80]}...")
+                    
+                    # Video hazır olana kadar bekle
+                    logger.info("⏳ Video hazırlanıyor bekleniyor (20-300 saniye)...")
+                    
+                    # URL'leri dene
+                    urls_to_try = [video_url, reserved_url]
+                    downloaded = False
+                    
+                    for url in urls_to_try:
+                        if downloaded:
+                            break
+                            
+                        logger.info(f"🔄 URL deneniyor: {url[:80]}...")
+                        
+                        # Video hazır olana kadar bekle (maksimum 320 saniye)
+                        for wait_seconds in range(0, 320, 20):
+                            try:
+                                logger.info(f"⏱️ Kontrol {wait_seconds}/320 saniye...")
+                                
+                                # HEAD isteği ile hazır olup olmadığını kontrol et
+                                head_response = requests.head(url, timeout=10, allow_redirects=True)
+                                logger.debug(f"📡 HEAD Response: {head_response.status_code}")
+                                
+                                if head_response.status_code == 200:
+                                    content_length = head_response.headers.get('content-length')
+                                    if content_length and int(content_length) > 1000000:  # 1MB'den büyük
+                                        logger.info(f"✅ Video hazır! Boyut: {int(content_length)/1024/1024:.1f} MB")
+                                        
+                                        # Videoyu indir
+                                        logger.info("📥 Video indiriliyor...")
+                                        video_response = requests.get(url, stream=True, timeout=60)
+                                        
+                                        with open(output_file, 'wb') as f:
+                                            total_size = int(video_response.headers.get('content-length', 0))
+                                            downloaded_size = 0
+                                            
+                                            for chunk in video_response.iter_content(chunk_size=8192):
+                                                if chunk:
+                                                    f.write(chunk)
+                                                    downloaded_size += len(chunk)
+                                                    
+                                                    # İlerleme güncellemesi
+                                                    if total_size > 0 and downloaded_size % (5 * 1024 * 1024) < 8192:
+                                                        progress = (downloaded_size / total_size) * 100
+                                                        logger.info(f"📊 İlerleme: {progress:.1f}% ({downloaded_size/1024/1024:.1f} MB)")
+                                        
+                                        # İndirme kontrolü
+                                        if os.path.exists(output_file):
+                                            file_size = os.path.getsize(output_file)
+                                            logger.info(f"✅ İndirme tamamlandı! {file_size/1024/1024:.1f} MB")
+                                            
+                                            if file_size > 1000000:  # 1MB'den büyük
+                                                logger.info(f"🎉 RapidAPI ile başarıyla indirildi!")
+                                                logger.info(f"🔑 Kullanılan Key: {api_key[:8]}...")
+                                                return True
+                                            else:
+                                                logger.warning(f"⚠️ Dosya çok küçük: {file_size} bytes")
+                                                os.remove(output_file)
+                                                break
+                                    
+                                    break
+                                elif head_response.status_code == 404:
+                                    # Henüz hazır değil
+                                    logger.info(f"⏳ Video henüz hazır değil, {20} saniye bekleniyor...")
+                                    time.sleep(20)
+                                else:
+                                    logger.warning(f"⚠️ Beklenmeyen HTTP kodu: {head_response.status_code}")
+                                    break
+                                    
+                            except Exception as e:
+                                logger.warning(f"⚠️ URL kontrol hatası: {str(e)[:100]}")
+                                time.sleep(20)
+                    
+                    if not downloaded:
+                        logger.warning(f"⚠️ Bu key ile video indirilemedi: {api_key[:8]}...")
+                            
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ JSON parse hatası: {str(e)}")
+                    logger.debug(f"📄 Raw response: {data[:500]}")
+                    
+            elif status_code == 403:
+                logger.warning(f"⚠️ API'ye abone değilsiniz veya key geçersiz")
+            elif status_code == 429:
+                logger.warning(f"⚠️ Rate limit aşıldı")
+            else:
+                logger.warning(f"⚠️ HTTP {status_code}")
+                
+            # Key'ler arasında bekle
+            if i < len(rapidapi_keys) - 1:
+                logger.info("⏳ Sonraki key için 5 saniye bekleniyor...")
+                time.sleep(5)
+                
+        except Exception as e:
+            logger.error(f"❌ RapidAPI hatası: {str(e)}", exc_info=True)
+            continue
+    
+    logger.error("❌ Tüm RapidAPI denemeleri başarısız!")
+    return False
+
+def download_via_pytube(youtube_url, output_file):
+    """Pytube ile YouTube videosu indir"""
+    try:
+        logger.info(f"🐍 Pytube ile indirme deneniyor: {youtube_url}")
+        
+        # Pytube'i dynamic import et
+        from pytube import YouTube
+        
+        # YouTube nesnesi oluştur
+        yt = YouTube(youtube_url)
+        logger.info(f"📺 Video başlığı: {yt.title}")
+        
+        # En yüksek kaliteli stream'i bul
+        stream = yt.streams.filter(
+            progressive=True, 
+            file_extension='mp4'
+        ).order_by('resolution').desc().first()
+        
+        if stream:
+            logger.info(f"📦 Stream bulundu: {stream.resolution}")
+            logger.info(f"📥 İndirme başlatılıyor...")
+            
+            # Videoyu indir
+            stream.download(filename=output_file)
+            
+            if os.path.exists(output_file):
+                file_size = os.path.getsize(output_file)
+                if file_size > 1024000:
+                    logger.info(f"✅ Pytube ile indirildi! ({file_size/1024/1024:.1f} MB)")
+                    return True
+                else:
+                    logger.warning(f"⚠️ Pytube dosya çok küçük: {file_size} bytes")
+                    os.remove(output_file)
+        
+        logger.error("❌ Pytube ile uygun stream bulunamadı")
+        return False
+        
+    except Exception as e:
+        logger.error(f"❌ Pytube hatası: {str(e)}", exc_info=True)
+        return False
+
 def get_all_rapidapi_keys():
-    """Tüm RapidAPI key'lerini topla (RAPIDAPI_KEY_1, RAPIDAPI_KEY_2, ...)"""
+    """Tüm RapidAPI key'lerini topla"""
     keys = []
     
-    # RAPIDAPI_KEY_1, RAPIDAPI_KEY_2 şeklinde key'leri ara
-    for i in range(1, 11):  # Maksimum 10 key
+    # RAPIDAPI_KEY_1, RAPIDAPI_KEY_2, ... şeklinde ara
+    i = 1
+    while True:
         key_name = f"RAPIDAPI_KEY_{i}"
         key_value = os.environ.get(key_name)
         
@@ -320,11 +512,11 @@ def get_all_rapidapi_keys():
             key_value = key_value.strip()
             if key_value and key_value not in keys:
                 keys.append(key_value)
-                logger.info(f"🔑 {key_name} bulundu: {key_value[:8]}...{key_value[-4:]}")
+                logger.info(f"🔑 {key_name} bulundu: {key_value[:8]}...")
+            i += 1
         else:
-            # Devam etmeyi bırak
             if i == 1:
-                logger.warning("⚠️ RAPIDAPI_KEY_1 bulunamadı")
+                logger.warning(f"⚠️ RAPIDAPI_KEY_1 bulunamadı")
             break
     
     # Eski formatı da kontrol et
@@ -336,214 +528,8 @@ def get_all_rapidapi_keys():
                 keys.append(key)
                 logger.info(f"🔑 Eski format RapidAPI Key bulundu: {key[:8]}...")
     
-    logger.info(f"Toplam {len(keys)} RapidAPI anahtarı bulundu")
+    logger.info(f"📊 Toplam {len(keys)} RapidAPI anahtarı bulundu")
     return keys
-
-def test_rapidapi_key(api_key, youtube_id, service_config):
-    """Bir RapidAPI key'ini test et"""
-    try:
-        logger.debug(f"RapidAPI test: {service_config['name']} - Key: {api_key[:8]}...")
-        
-        response = requests.get(
-            service_config['url'],
-            headers={
-                "X-RapidAPI-Key": api_key,
-                "X-RapidAPI-Host": service_config['host']
-            },
-            params={"id": youtube_id},
-            timeout=20
-        )
-        
-        logger.debug(f"RapidAPI Response: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            logger.debug(f"RapidAPI Data keys: {list(data.keys()) if isinstance(data, dict) else 'Not dict'}")
-            return True, data
-        elif response.status_code == 401:
-            logger.warning(f"❌ API Key geçersiz: {api_key[:8]}...")
-            return False, None
-        elif response.status_code == 429:
-            logger.warning(f"⚠️ Rate limit: {api_key[:8]}...")
-            return False, None
-        else:
-            logger.warning(f"⚠️ HTTP {response.status_code}: {response.text[:100]}")
-            return False, None
-            
-    except Exception as e:
-        logger.error(f"RapidAPI test hatası: {str(e)}")
-        return False, None
-
-
-                        def download_via_rapidapi(youtube_id, output_file):
-    """RapidAPI ile video indir (dosya hazır olana kadar bekle)"""
-    
-    rapidapi_keys = get_all_rapidapi_keys()
-    
-    if not rapidapi_keys:
-        logger.warning("⚠️ Hiç RapidAPI key bulunamadı!")
-        return False
-    
-    logger.info(f"🔑 {len(rapidapi_keys)} RapidAPI anahtarı ile deneniyor...")
-    
-    # Kullanılabilecek API endpoint'leri
-    apis_to_try = [
-        {
-            "name": "youtube-video-download-info",
-            "url": "https://youtube-video-download-info.p.rapidapi.com/dl",
-            "host": "youtube-video-download-info.p.rapidapi.com"
-        }
-    ]
-    
-    for api_key in rapidapi_keys:
-        logger.info(f"🔑 Key deneniyor: {api_key[:8]}...")
-        
-        for api in apis_to_try:
-            try:
-                logger.info(f"  📡 API: {api['name']}")
-                
-                headers = {
-                    "X-RapidAPI-Key": api_key,
-                    "X-RapidAPI-Host": api['host']
-                }
-                
-                params = {"id": youtube_id}
-                
-                logger.debug(f"  API çağrısı: {api['url']}?id={youtube_id}")
-                response = requests.get(api['url'], headers=headers, params=params, timeout=30)
-                logger.debug(f"  API Response: {response.status_code}")
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    logger.info(f"  ✅ API yanıt aldı: {data.get('comment', 'No comment')}")
-                    
-                    # JSON'daki verileri kontrol et
-                    logger.info(f"  📊 Video bilgileri:")
-                    logger.info(f"    - Boyut: {data.get('size', 'Bilinmiyor')} bytes")
-                    logger.info(f"    - Bitrate: {data.get('bitrate', 'Bilinmiyor')}")
-                    logger.info(f"    - Kalite: {data.get('quality', 'Bilinmiyor')}")
-                    logger.info(f"    - Tür: {data.get('type', 'Bilinmiyor')}")
-                    
-                    if 'file' in data:
-                        video_url = data['file']
-                        reserved_url = data.get('reserved_file', video_url)
-                        
-                        logger.info(f"  📹 Video URL: {video_url}")
-                        logger.info(f"  🔄 Yedek URL: {reserved_url}")
-                        
-                        # Video hazır olana kadar bekle (maksimum 300 saniye)
-                        max_wait_time = 300  # 5 dakika
-                        wait_interval = 30   # 30 saniyede bir kontrol et
-                        waited = 0
-                        video_ready = False
-                        
-                        # Önce ana URL'yi dene, olmazsa yedek URL'yi dene
-                        urls_to_try = [video_url, reserved_url]
-                        
-                        for current_url in urls_to_try:
-                            logger.info(f"  🔄 URL deneniyor: {current_url[:80]}...")
-                            
-                            while waited < max_wait_time and not video_ready:
-                                logger.info(f"  ⏳ Video hazırlanıyor... {waited}/{max_wait_time} saniye bekleniyor")
-                                
-                                try:
-                                    # Video URL'sine HEAD isteği atarak hazır olup olmadığını kontrol et
-                                    head_response = requests.head(current_url, timeout=10)
-                                    logger.debug(f"  HEAD Response: {head_response.status_code}")
-                                    
-                                    if head_response.status_code == 200:
-                                        # Content-Length kontrolü
-                                        content_length = head_response.headers.get('content-length')
-                                        if content_length and int(content_length) > 0:
-                                            logger.info(f"  ✅ Video hazır! Boyut: {int(content_length)/1024/1024:.1f} MB")
-                                            video_ready = True
-                                            video_url = current_url
-                                            break
-                                        else:
-                                            logger.info(f"  ⚠️ Video hazır ama boyut 0")
-                                    elif head_response.status_code == 404:
-                                        # Henüz hazır değil
-                                        logger.info(f"  ⏱️ Video henüz hazır değil (404), {wait_interval} saniye bekleniyor...")
-                                    else:
-                                        logger.warning(f"  ⚠️ Beklenmeyen HTTP kodu: {head_response.status_code}")
-                                
-                                except Exception as e:
-                                    logger.warning(f"  ⚠️ HEAD isteği hatası: {str(e)[:100]}")
-                                
-                                # Bekle
-                                time.sleep(wait_interval)
-                                waited += wait_interval
-                            
-                            if video_ready:
-                                break
-                            else:
-                                logger.warning(f"  ⚠️ Bu URL başarısız, diğer URL deneniyor...")
-                        
-                        if video_ready:
-                            logger.info("  ✅ Video hazır, indiriliyor...")
-                            
-                            # Videoyu indir (stream ile)
-                            video_response = requests.get(video_url, stream=True, timeout=60)
-                            
-                            # Content-Length kontrolü
-                            total_size = int(video_response.headers.get('content-length', 0))
-                            logger.info(f"  📥 İndirilecek boyut: {total_size/1024/1024:.1f} MB")
-                            
-                            if total_size == 0:
-                                logger.error("  ❌ Video boyutu 0, indirme iptal")
-                                return False
-                            
-                            downloaded = 0
-                            with open(output_file, 'wb') as f:
-                                for chunk in video_response.iter_content(chunk_size=8192):
-                                    if chunk:
-                                        f.write(chunk)
-                                        downloaded += len(chunk)
-                                        
-                                        # İlerlemeyi logla (her 5MB'da bir)
-                                        if downloaded % (5 * 1024 * 1024) < 8192:
-                                            progress = (downloaded / total_size) * 100
-                                            logger.info(f"  📊 İndirme: {downloaded/1024/1024:.1f}/{total_size/1024/1024:.1f} MB ({progress:.1f}%)")
-                            
-                            if os.path.exists(output_file):
-                                file_size = os.path.getsize(output_file)
-                                logger.info(f"  ✅ İndirme tamamlandı! Dosya boyutu: {file_size/1024/1024:.1f} MB")
-                                
-                                if file_size > 1024000:  # 1MB'den büyük
-                                    logger.info(f"  ✅ RapidAPI ile indirildi! ({file_size/1024/1024:.1f} MB)")
-                                    return True
-                                else:
-                                    logger.warning(f"  ⚠️ Dosya çok küçük: {file_size} bytes")
-                                    os.remove(output_file)
-                                    return False
-                            else:
-                                logger.error("  ❌ İndirilen dosya oluşmadı")
-                                return False
-                        else:
-                            logger.error("  ❌ Video hazırlanmak için çok uzun sürdü (timeout)")
-                            return False
-                    else:
-                        logger.warning(f"  ⚠️ Yanıtta 'file' anahtarı yok. Yanıt: {data}")
-                        return False
-                
-                elif response.status_code == 403:
-                    logger.warning(f"  ⚠️ API'ye abone değilsiniz: {api['name']}")
-                elif response.status_code == 429:
-                    logger.warning(f"  ⚠️ Rate limit aşıldı: {api['name']}")
-                else:
-                    logger.warning(f"  ⚠️ HTTP {response.status_code}: {response.text[:100]}")
-                    
-                # API'ler arasında kısa bekle
-                time.sleep(1)
-                
-            except Exception as e:
-                logger.error(f"  ❌ API hatası: {str(e)}", exc_info=True)
-        
-        # Key'ler arasında bekle
-        time.sleep(2)
-    
-    logger.error("❌ Tüm RapidAPI denemeleri başarısız!")
-    return False
 
 # ============================================
 # 3. YARDIMCI FONKSİYONLAR
@@ -566,7 +552,7 @@ def extract_video_id(url):
         if match:
             return match.group(1)
     
-    logger.warning(f"Video ID çıkarılamadı: {url}")
+    logger.warning(f"⚠️ Video ID çıkarılamadı: {url}")
     return url.split('/')[-1]
 
 def get_youtube_url_from_tmdb(tmdb_id, api_key):
@@ -574,19 +560,18 @@ def get_youtube_url_from_tmdb(tmdb_id, api_key):
     try:
         url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/videos"
         params = {'api_key': api_key, 'language': 'tr-TR'}
-        logger.debug(f"TMDB Videos API: {url}")
+        logger.info(f"📡 TMDB Videos API çağrısı: {url}")
         
         response = requests.get(url, params=params, timeout=15)
         data = response.json()
         
-        logger.debug(f"TMDB Videos Response: {len(data.get('results', []))} video bulundu")
+        logger.info(f"📊 TMDB Videos: {len(data.get('results', []))} video bulundu")
         
         # Fragmanları önceliklendir
         for video in data.get('results', []):
             if video.get('site') == 'YouTube' and video.get('type') == 'Trailer':
                 video_url = f"https://www.youtube.com/watch?v={video['key']}"
                 logger.info(f"✅ TMDB'den fragman bulundu: {video['name']}")
-                logger.debug(f"Video URL: {video_url}")
                 return video_url
         
         # Diğer YouTube videoları
@@ -594,12 +579,12 @@ def get_youtube_url_from_tmdb(tmdb_id, api_key):
             if video.get('site') == 'YouTube':
                 video_url = f"https://www.youtube.com/watch?v={video['key']}"
                 logger.info(f"✅ TMDB'den video bulundu: {video['name']}")
-                logger.debug(f"Video URL: {video_url}")
                 return video_url
                 
     except Exception as e:
-        logger.error(f"TMDB video çekme hatası: {str(e)}", exc_info=True)
+        logger.error(f"❌ TMDB video çekme hatası: {str(e)}", exc_info=True)
     
+    logger.warning("⚠️ TMDB'den YouTube videosu bulunamadı")
     return None
 
 # ============================================
@@ -609,12 +594,12 @@ def get_main_content_via_3layer(youtube_url, tmdb_id, film_adi, duration, output
     """3 katmanla ana içerik videosunu al."""
     
     youtube_id = extract_video_id(youtube_url) if youtube_url else None
-    logger.info(f"Video ID: {youtube_id}")
+    logger.info(f"🎯 Video ID: {youtube_id}")
     
     # KATMAN 1: Gelişmiş yt-dlp
-    logger.info("="*50)
+    logger.info("="*60)
     logger.info("KATMAN 1: Gelişmiş yt-dlp")
-    logger.info("="*50)
+    logger.info("="*60)
     
     if youtube_url:
         if download_ytdlp_enhanced(youtube_url, output_file):
@@ -622,21 +607,32 @@ def get_main_content_via_3layer(youtube_url, tmdb_id, film_adi, duration, output
     else:
         logger.warning("⚠️ YouTube URL yok, Katman 1 atlanıyor")
     
-    # KATMAN 2: RapidAPI (2 key'li sistem)
-    logger.info("="*50)
-    logger.info("KATMAN 2: RapidAPI (Çoklu Key)")
-    logger.info("="*50)
+    # KATMAN 2: RapidAPI (Yeni endpoint)
+    logger.info("="*60)
+    logger.info("KATMAN 2: RapidAPI (Yeni Endpoint)")
+    logger.info("="*60)
     
     if youtube_id:
-        if download_via_rapidapi(youtube_id, output_file):
+        if download_via_rapidapi_direct(youtube_id, output_file):
             return True
     else:
         logger.warning("⚠️ YouTube ID yok, Katman 2 atlanıyor")
     
-    # KATMAN 3: TMDB Sinematik İçerik
-    logger.info("="*50)
-    logger.info("KATMAN 3: TMDB Sinematik İçerik")
-    logger.info("="*50)
+    # KATMAN 3: Pytube
+    logger.info("="*60)
+    logger.info("KATMAN 3: Pytube")
+    logger.info("="*60)
+    
+    if youtube_url:
+        if download_via_pytube(youtube_url, output_file):
+            return True
+    else:
+        logger.warning("⚠️ YouTube URL yok, Katman 3 atlanıyor")
+    
+    # KATMAN 4: TMDB Sinematik İçerik (fallback)
+    logger.info("="*60)
+    logger.info("KATMAN 4: TMDB Sinematik İçerik")
+    logger.info("="*60)
     
     return create_cinematic_content(tmdb_id, film_adi, duration, output_file)
 
@@ -648,7 +644,7 @@ def create_cinematic_content(tmdb_id, film_adi, duration, output_file):
             logger.error("❌ TMDB_API_KEY yok")
             return False
         
-        logger.info(f"TMDB Sinematik içerik oluşturuluyor: {film_adi}")
+        logger.info(f"🎬 TMDB Sinematik içerik oluşturuluyor: {film_adi}")
         
         # TMDB'den backdrop al
         tmdb_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}"
@@ -664,7 +660,7 @@ def create_cinematic_content(tmdb_id, film_adi, duration, output_file):
             backdrop_url = f"https://image.tmdb.org/t/p/original{backdrop_path}"
             backdrop_file = f"backdrop_content_{tmdb_id}.jpg"
             
-            logger.debug(f"Backdrop indiriliyor: {backdrop_url}")
+            logger.info(f"📥 Backdrop indiriliyor: {backdrop_url}")
             with open(backdrop_file, 'wb') as f:
                 f.write(requests.get(backdrop_url).content)
             
@@ -688,7 +684,7 @@ def create_cinematic_content(tmdb_id, film_adi, duration, output_file):
                 output_file
             ]
             
-            logger.debug(f"Sinematik içerik komutu: {' '.join(cmd)}")
+            logger.info(f"🎬 FFmpeg sinematik içerik oluşturuyor")
             subprocess.run(cmd, check=True, timeout=300)
             os.remove(backdrop_file)
             
@@ -715,7 +711,22 @@ def combine_cover_and_content(cover_path, content_path, output_path):
             logger.error(f"❌ İçerik dosyası bulunamadı: {content_path}")
             return False
         
-        logger.info("Videolar birleştiriliyor...")
+        logger.info("🔗 Videolar birleştiriliyor...")
+        
+        # Önce dosya sürelerini kontrol et
+        try:
+            cmd_cover = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                        '-of', 'default=noprint_wrappers=1:nokey=1', cover_path]
+            cmd_content = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                          '-of', 'default=noprint_wrappers=1:nokey=1', content_path]
+            
+            cover_duration = float(subprocess.run(cmd_cover, capture_output=True, text=True).stdout.strip())
+            content_duration = float(subprocess.run(cmd_content, capture_output=True, text=True).stdout.strip())
+            
+            logger.info(f"⏱️ Kapak süresi: {cover_duration:.2f}s")
+            logger.info(f"⏱️ İçerik süresi: {content_duration:.2f}s")
+        except:
+            logger.warning("⚠️ Süreler alınamadı, varsayılan değerler kullanılıyor")
         
         # Basit birleştirme
         cmd = [
@@ -723,11 +734,7 @@ def combine_cover_and_content(cover_path, content_path, output_path):
             '-i', cover_path,
             '-i', content_path,
             '-filter_complex', 
-            '[0:v]setpts=PTS-STARTPTS[v0];'
-            '[0:a]asetpts=PTS-STARTPTS[a0];'
-            '[1:v]setpts=PTS-STARTPTS[v1];'
-            '[1:a]asetpts=PTS-STARTPTS[a1];'
-            '[v0][a0][v1][a1]concat=n=2:v=1:a=1[outv][outa]',
+            '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]',
             '-map', '[outv]',
             '-map', '[outa]',
             '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
@@ -736,7 +743,7 @@ def combine_cover_and_content(cover_path, content_path, output_path):
             output_path
         ]
         
-        logger.debug(f"Birleştirme komutu: {' '.join(cmd[:5])}...")
+        logger.debug(f"🔧 FFmpeg birleştirme komutu: {' '.join(cmd[:5])}...")
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         
         if result.returncode == 0:
@@ -757,7 +764,7 @@ def combine_cover_and_content(cover_path, content_path, output_path):
 def get_tts_duration(tts_url):
     """TTS sesinin süresini al."""
     try:
-        logger.debug(f"TTS süresi alınıyor: {tts_url}")
+        logger.info(f"🔊 TTS süresi alınıyor: {tts_url}")
         
         # TTS'yi indir
         tts_temp = "temp_tts.mp3"
@@ -795,7 +802,7 @@ def add_tts_to_video(video_path, tts_url, output_path):
         with open(tts_file, 'wb') as f:
             f.write(response.content)
         
-        logger.debug(f"TTS boyutu: {tts_size} bytes")
+        logger.info(f"📦 TTS boyutu: {tts_size/1024:.1f} KB")
         
         if tts_size < 1024:
             logger.error("⚠️ TTS dosyası çok küçük")
@@ -815,7 +822,7 @@ def add_tts_to_video(video_path, tts_url, output_path):
             output_path
         ]
         
-        logger.debug(f"TTS ekleme komutu: {' '.join(cmd)}")
+        logger.info(f"🎬 FFmpeg TTS ekliyor")
         subprocess.run(cmd, check=True, timeout=300)
         os.remove(tts_file)
         
@@ -843,8 +850,8 @@ def main():
             logger.warning("❌ GITHUB_EVENT_PATH bulunamadı! Test modu...")
             p = {
                 "film_id": "test_001",
-                "tmdb_id": "551",
-                "film_adi": "Anakonda",
+                "tmdb_id": "1233413",
+                "film_adi": "Günahkârlar",
                 "ses_url": "https://prodopsy.com/youtube/audio/ses_3.mp3",
                 "callback": "https://webhook.site/test"
             }
@@ -947,9 +954,9 @@ def main():
             if temp_file and os.path.exists(temp_file):
                 try:
                     os.remove(temp_file)
-                    logger.debug(f"Silindi: {temp_file}")
+                    logger.debug(f"✅ Silindi: {temp_file}")
                 except Exception as e:
-                    logger.warning(f"Silinemedi {temp_file}: {e}")
+                    logger.warning(f"⚠️ Silinemedi {temp_file}: {e}")
         
         logger.info("\n" + "="*60)
         logger.info("✅ 1+3+1 SİSTEMİ BAŞARIYLA TAMAMLANDI!")
