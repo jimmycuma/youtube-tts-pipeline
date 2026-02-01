@@ -36,54 +36,107 @@ logger = setup_logging()
 # ============================================
 # 1. BASİT VE ÇALIŞAN KAPAK SİSTEMİ
 # ============================================
-def create_working_cover(tmdb_id, film_adi, cover_duration=5):
-    """GÜVENİLİR kapak oluştur (basit ve çalışan)"""
+
+# ============================================
+# 1. PROFESYONEL POSTER KAPAK SİSTEMİ
+# ============================================
+def create_professional_cover(tmdb_id, film_adi, cover_duration=5):
+    """TMDB poster'i üzerine profesyonel kapak oluştur"""
     
-    logger.info(f"🎨 Kapak oluşturuluyor: {film_adi}")
+    logger.info(f"🎨 Profesyonel kapak oluşturuluyor: {film_adi}")
+    
+    TMDB_KEY = os.environ.get("TMDB_API_KEY", "")
+    if not TMDB_KEY:
+        logger.warning("⚠️ TMDB_API_KEY yok, basit kapak kullanılacak")
+        return create_minimal_cover(film_adi, f"cover_{tmdb_id}.mp4")
     
     cover_file = f"cover_{tmdb_id}.mp4"
+    temp_files = []
     
     try:
-        # Sadece film adı ve temel bilgilerle basit kapak
+        # TMDB'den film bilgilerini al
+        tmdb_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}"
+        params = {'api_key': TMDB_KEY, 'language': 'tr-TR', 'append_to_response': 'images'}
+        response = requests.get(tmdb_url, params=params, timeout=15)
+        
+        if response.status_code != 200:
+            logger.error(f"❌ TMDB API hatası: {response.status_code}")
+            return create_minimal_cover(film_adi, cover_file)
+        
+        film_data = response.json()
+        logger.info(f"✅ TMDB Data alındı: {film_data.get('title')}")
+        
+        # Poster seçimi
+        poster_path = film_data.get('poster_path')
+        if not poster_path and film_data.get('images', {}).get('posters'):
+            poster_path = film_data['images']['posters'][0]['file_path']
+        
+        if not poster_path:
+            logger.warning("⚠️ Poster bulunamadı, siyah arka plan kullanılacak")
+            return create_minimal_cover(film_adi, cover_file)
+        
+        # Poster indir
+        poster_url = f"https://image.tmdb.org/t/p/original{poster_path}"
+        poster_file = f"poster_{tmdb_id}.jpg"
+        
+        logger.info(f"📥 Poster indiriliyor: {poster_url}")
+        with open(poster_file, 'wb') as f:
+            f.write(requests.get(poster_url, timeout=20).content)
+        temp_files.append(poster_file)
+        
+        file_size = os.path.getsize(poster_file)
+        logger.info(f"✅ Poster indirildi: {file_size/1024:.1f} KB")
+        
+        # Font kontrolü
         font_path = "assets/font.ttf"
         if not os.path.exists(font_path):
-            font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+            # Ubuntu'da mevcut fontları ara
+            font_path = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
             if not os.path.exists(font_path):
-                font_path = "Arial"
+                font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+                if not os.path.exists(font_path):
+                    font_path = "Arial"
         
-        # 1. Siyah arka plan
-        # 2. Film adı büyük
-        # 3. "İNCELEME" altında
-        # 4. Kırmızı çizgi efekti
+        # Film yılı
+        year = film_data.get('release_date', '')[:4] if film_data.get('release_date') else ''
         
+        # 1. SEÇENEK: Poster üzerine koyu overlay + yazı (EN GÜZEL)
         filter_complex = (
-            f"color=c=black:s=1920x1080:d={cover_duration}[bg];"
-            f"[bg]drawtext=fontfile='{font_path}':text='{film_adi}':"
-            f"fontcolor=white:fontsize=96:x=(w-text_w)/2:y=(h-text_h)/2-80,"
+            f"movie={poster_file},scale=1920:1080:force_original_aspect_ratio=increase,"
+            f"crop=1920:1080,setsar=1[poster];"
+            f"[poster]colorchannelmixer=aa=0.7[poster_dark];"  # Poster'i %70 opak yap (biraz karart)
+            f"[poster_dark]drawbox=x=0:y=h-300:w=iw:h=300:color=black@0.8:t=fill[box];"
+            f"[box]drawtext=fontfile='{font_path}':text='{film_adi}':"
+            f"fontcolor=white:fontsize=86:fontweight=bold:"
+            f"x=(w-text_w)/2:y=h-250:shadowcolor=black@0.8:shadowx=4:shadowy=4,"
             f"drawtext=fontfile='{font_path}':text='İ N C E L E M E':"
-            f"fontcolor=#40E0D0:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2+40,"
-            f"drawbox=x=(w-300)/2:y=(h-text_h)/2+100:w=300:h=4:color=#40E0D0:t=fill,"
-            f"fade=t=in:st=0:d=0.5,fade=t=out:st={cover_duration-0.5}:d=0.5"
+            f"fontcolor=#40E0D0:fontsize=42:fontweight=bold:"
+            f"x=(w-text_w)/2:y=h-150:shadowcolor=black@0.6:shadowx=2:shadowy=2,"
+            f"drawtext=fontfile='{font_path}':text='{year}':"
+            f"fontcolor=#FFD700:fontsize=32:"
+            f"x=(w-text_w)/2:y=h-90,"
+            f"drawbox=x=(w-200)/2:y=h-50:w=200:h=3:color=#40E0D0:t=fill"
         )
         
         cmd = [
             'ffmpeg', '-y',
-            '-f', 'lavfi', '-i', f'color=c=black:s=1920x1080:d={cover_duration}',
+            '-loop', '1', '-i', poster_file,
             '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
             '-vf', filter_complex,
-            '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '20',
             '-c:a', 'aac', '-b:a', '128k',
             '-t', str(cover_duration),
+            '-r', '25',
             cover_file
         ]
         
-        logger.info(f"🎬 FFmpeg kapak oluşturuyor")
+        logger.info(f"🎬 FFmpeg profesyonel kapak oluşturuyor")
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         
         if result.returncode == 0:
             if os.path.exists(cover_file):
                 file_size = os.path.getsize(cover_file)
-                logger.info(f"✅ Kapak oluşturuldu: {cover_file} ({file_size/1024:.1f} KB)")
+                logger.info(f"✅ Profesyonel kapak oluşturuldu: {cover_file} ({file_size/1024:.1f} KB)")
                 return cover_file
             else:
                 logger.error("❌ Kapak dosyası oluşturulamadı")
@@ -93,26 +146,222 @@ def create_working_cover(tmdb_id, film_adi, cover_duration=5):
     except Exception as e:
         logger.error(f"❌ Kapak oluşturma hatası: {str(e)}", exc_info=True)
     
-    # Daha da basit fallback
+    finally:
+        # Temizlik
+        for temp_file in temp_files:
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                    logger.debug(f"Geçici dosya silindi: {temp_file}")
+                except:
+                    pass
+    
+    # Fallback: Siyah arka planlı kapak
+    logger.info("🔄 Fallback: Siyah arka planlı kapak")
     return create_minimal_cover(film_adi, cover_file)
 
 def create_minimal_cover(film_adi, output_file, duration=5):
     """Minimal kapak (kesin çalışan)"""
     try:
+        # Basit siyah arka plan
         cmd = [
             'ffmpeg', '-y',
-            '-f', 'lavfi', '-i', f'color=c=black:s=1280x720:d={duration}',
+            '-f', 'lavfi', '-i', f'color=c=black:s=1920x1080:d={duration}',
+            '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
             '-vf', f"drawtext=text='{film_adi}':fontcolor=white:fontsize=72:"
-                   f"x=(w-text_w)/2:y=(h-text_h)/2",
-            '-c:v', 'libx264', '-t', str(duration),
+                   f"x=(w-text_w)/2:y=(h-text_h)/2,"
+                   f"drawtext=text='İNCELEME':fontcolor=#40E0D0:fontsize=36:"
+                   f"x=(w-text_w)/2:y=h-100",
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+            '-c:a', 'aac', '-b:a', '128k',
+            '-t', str(duration),
+            '-r', '25',
             output_file
         ]
+        
+        logger.info(f"🎬 Minimal kapak oluşturuluyor")
         subprocess.run(cmd, check=True, timeout=30, capture_output=True)
         logger.info(f"✅ Minimal kapak oluşturuldu: {output_file}")
         return output_file
     except Exception as e:
         logger.error(f"❌ Minimal kapak hatası: {e}")
         return None
+
+# ============================================
+# 2. ALTERNATIF: BLUR ARKAPLAN + ORTA POSTER
+# ============================================
+def create_cinematic_blur_cover(tmdb_id, film_adi, cover_duration=5):
+    """Cinematik blur arkaplan + ortada poster"""
+    
+    logger.info(f"🎬 Cinematik kapak oluşturuluyor: {film_adi}")
+    
+    TMDB_KEY = os.environ.get("TMDB_API_KEY", "")
+    if not TMDB_KEY:
+        return create_professional_cover(tmdb_id, film_adi, cover_duration)
+    
+    cover_file = f"cover_{tmdb_id}.mp4"
+    temp_files = []
+    
+    try:
+        # TMDB'den film bilgilerini al
+        tmdb_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}"
+        params = {'api_key': TMDB_KEY, 'language': 'tr-TR', 'append_to_response': 'images'}
+        response = requests.get(tmdb_url, params=params, timeout=15)
+        film_data = response.json()
+        
+        # Backdrop ve poster al
+        backdrop_path = film_data.get('backdrop_path')
+        poster_path = film_data.get('poster_path')
+        
+        if not backdrop_path and film_data.get('images', {}).get('backdrops'):
+            backdrop_path = film_data['images']['backdrops'][0]['file_path']
+        if not poster_path and film_data.get('images', {}).get('posters'):
+            poster_path = film_data['images']['posters'][0]['file_path']
+        
+        # Görselleri indir
+        base_url = "https://image.tmdb.org/t/p/original"
+        
+        backdrop_file = None
+        poster_file = None
+        
+        if backdrop_path:
+            backdrop_url = f"{base_url}{backdrop_path}"
+            backdrop_file = f"backdrop_{tmdb_id}.jpg"
+            with open(backdrop_file, 'wb') as f:
+                f.write(requests.get(backdrop_url, timeout=20).content)
+            temp_files.append(backdrop_file)
+        
+        if poster_path:
+            poster_url = f"{base_url}{poster_path}"
+            poster_file = f"poster_{tmdb_id}.jpg"
+            with open(poster_file, 'wb') as f:
+                f.write(requests.get(poster_url, timeout=20).content)
+            temp_files.append(poster_file)
+        
+        # Font kontrolü
+        font_path = "assets/font.ttf"
+        if not os.path.exists(font_path):
+            font_path = "Arial"
+        
+        # Film yılı
+        year = film_data.get('release_date', '')[:4] if film_data.get('release_date') else ''
+        title_display = f"{film_adi}" + (f" ({year})" if year else "")
+        
+        # FFmpeg filter complex
+        filter_parts = []
+        
+        # Backdrop işleme (blur + karartma)
+        if backdrop_file:
+            filter_parts.append(
+                f"movie={backdrop_file},scale=1920:1080,"
+                f"boxblur=20:10[bg_blur];"  # Blur efekti
+                f"[bg_blur]colorchannelmixer=aa=0.5[bg_dark]"  # %50 karartma
+            )
+            bg_layer = "bg_dark"
+        else:
+            filter_parts.append(f"color=c=black:s=1920x1080:d={cover_duration}[bg_dark]")
+            bg_layer = "bg_dark"
+        
+        # Poster ekleme (ortada)
+        if poster_file:
+            filter_parts.append(
+                f"movie={poster_file},scale=500:-1[poster];"
+                f"[{bg_layer}][poster]overlay=x=(W-w)/2:y=(H-h)/2-50[bg_with_poster]"
+            )
+            current_layer = "bg_with_poster"
+        else:
+            current_layer = bg_layer
+        
+        # Film adı (posterin altında)
+        filter_parts.append(
+            f"[{current_layer}]drawtext=fontfile='{font_path}':"
+            f"text='{title_display}':fontcolor=white:fontsize=64:fontweight=bold:"
+            f"borderw=3:bordercolor=black@0.6:"
+            f"x=(w-text_w)/2:y=(h/2)+280[with_title]"
+        )
+        
+        # "İNCELEME" yazısı
+        filter_parts.append(
+            f"[with_title]drawtext=fontfile='{font_path}':"
+            f"text='İ N C E L E M E':fontcolor=#40E0D0:fontsize=36:"
+            f"borderw=2:bordercolor=black@0.5:"
+            f"x=(w-text_w)/2:y=(h/2)+350[with_subtitle];"
+            # Altına çizgi
+            f"[with_subtitle]drawbox=x=(w-200)/2:y=(h/2)+390:"
+            f"w=200:h=3:color=#40E0D0:t=fill[final]"
+        )
+        
+        # Fade efekti
+        filter_parts.append(
+            f"[final]fade=t=in:st=0:d=0.5,fade=t=out:st={cover_duration-0.5}:d=0.5[output]"
+        )
+        
+        filter_complex = ";".join(filter_parts)
+        
+        ffmpeg_cmd = [
+            'ffmpeg', '-y',
+            '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+            '-filter_complex', filter_complex,
+            '-map', '[output]',
+            '-map', '0:a',
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+            '-c:a', 'aac', '-b:a', '128k',
+            '-t', str(cover_duration), '-r', '25',
+            cover_file
+        ]
+        
+        logger.info(f"🎬 Cinematik kapak oluşturuluyor")
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=120)
+        
+        if result.returncode == 0 and os.path.exists(cover_file):
+            file_size = os.path.getsize(cover_file)
+            logger.info(f"✅ Cinematik kapak oluşturuldu: {cover_file} ({file_size/1024:.1f} KB)")
+            return cover_file
+            
+    except Exception as e:
+        logger.error(f"❌ Cinematik kapak hatası: {str(e)}")
+    
+    finally:
+        # Temizlik
+        for f in temp_files:
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except:
+                    pass
+    
+    # Fallback
+    return create_professional_cover(tmdb_id, film_adi, cover_duration)
+
+# ============================================
+# 3. ANA KAPAK FONKSİYONU (TÜM SEÇENEKLER)
+# ============================================
+def create_working_cover(tmdb_id, film_adi, cover_duration=5):
+    """Ana kapak fonksiyonu - tüm seçenekleri dener"""
+    
+    logger.info(f"🎨 Kapak sistemi başlatılıyor: {film_adi}")
+    
+    # 1. Önce cinematik blur kapak dene
+    cover_file = f"cover_{tmdb_id}.mp4"
+    
+    try:
+        cover = create_cinematic_blur_cover(tmdb_id, film_adi, cover_duration)
+        if cover:
+            return cover
+    except Exception as e:
+        logger.warning(f"⚠️ Cinematik kapak başarısız: {str(e)[:100]}")
+    
+    # 2. Profesyonel poster kapak dene
+    try:
+        cover = create_professional_cover(tmdb_id, film_adi, cover_duration)
+        if cover:
+            return cover
+    except Exception as e:
+        logger.warning(f"⚠️ Profesyonel kapak başarısız: {str(e)[:100]}")
+    
+    # 3. Minimal kapak (kesin çalışan)
+    logger.info("🔄 Son çare: Minimal kapak")
+    return create_minimal_cover(film_adi, cover_file, cover_duration)
 
 # ============================================
 # 2. İNDİRME SİSTEMLERİ
@@ -615,7 +864,7 @@ def main():
         logger.info("ADIM 1: KAPAK OLUŞTURMA")
         logger.info("="*60)
         
-        cover_file = create_working_cover(tmdb_id, film_adi)
+        cover_file = create_professional_cover(tmdb_id, film_adi)
         if not cover_file:
             logger.error("❌ Kapak oluşturulamadı")
             return False
