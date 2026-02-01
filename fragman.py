@@ -208,6 +208,38 @@ def download_ytdlp_enhanced(youtube_url, output_file, max_attempts=3):
     
     return False
 
+
+
+
+def download_via_rapidapi_with_key_rotation(youtube_id, output_file, api_keys_str):
+    """RapidAPI anahtar döngüsü ile indir"""
+    # Bu fonksiyonu önceki mesajdan kopyala
+    pass  # Önceki mesajdaki kodu buraya yapıştır
+
+def extract_video_id(url):
+    """YouTube URL'den video ID çıkar"""
+    if not url: return None
+    if 'v=' in url:
+        return url.split('v=')[1].split('&')[0]
+    elif 'youtu.be/' in url:
+        return url.split('youtu.be/')[1].split('?')[0]
+    return url.split('/')[-1]
+
+def get_youtube_url_from_tmdb(tmdb_id, api_key):
+    """TMDB'den YouTube URL'sini al"""
+    try:
+        url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/videos"
+        params = {'api_key': api_key, 'language': 'tr-TR'}
+        response = requests.get(url, params=params, timeout=15)
+        data = response.json()
+        
+        for video in data.get('results', []):
+            if video.get('site') == 'YouTube':
+                return f"https://www.youtube.com/watch?v={video['key']}"
+    except:
+        pass
+    return None
+
 # ============================================
 # 2. 3 KATMANLI İÇERİK SİSTEMİ
 # ============================================
