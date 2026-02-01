@@ -374,117 +374,175 @@ def test_rapidapi_key(api_key, youtube_id, service_config):
         logger.error(f"RapidAPI test hatası: {str(e)}")
         return False, None
 
-def download_via_rapidapi(youtube_id, output_file):
-    """RapidAPI ile video indir (2 key'li sistem)"""
+
+                        def download_via_rapidapi(youtube_id, output_file):
+    """RapidAPI ile video indir (dosya hazır olana kadar bekle)"""
     
     rapidapi_keys = get_all_rapidapi_keys()
     
     if not rapidapi_keys:
-        logger.error("❌ Hiç RapidAPI key bulunamadı!")
+        logger.warning("⚠️ Hiç RapidAPI key bulunamadı!")
         return False
     
     logger.info(f"🔑 {len(rapidapi_keys)} RapidAPI anahtarı ile deneniyor...")
     
-    # Farklı RapidAPI servisleri
-    services = [
+    # Kullanılabilecek API endpoint'leri
+    apis_to_try = [
         {
-            "name": "youtube-video-downloader",
-            "host": "youtube-video-downloader.p.rapidapi.com",
-            "url": "https://youtube-video-downloader.p.rapidapi.com/dl"
-        },
-        {
-            "name": "youtube-v31",
-            "host": "youtube-v31.p.rapidapi.com",
-            "url": "https://youtube-v31.p.rapidapi.com/captions"
-        },
-        {
-            "name": "youtube-search-and-download",
-            "host": "youtube-search-and-download.p.rapidapi.com",
-            "url": "https://youtube-search-and-download.p.rapidapi.com/video"
+            "name": "youtube-video-download-info",
+            "url": "https://youtube-video-download-info.p.rapidapi.com/dl",
+            "host": "youtube-video-download-info.p.rapidapi.com"
         }
     ]
     
-    # Her key'i her serviste dene
     for api_key in rapidapi_keys:
-        logger.info(f"🔑 Key deniyor: {api_key[:8]}...{api_key[-4:]}")
+        logger.info(f"🔑 Key deneniyor: {api_key[:8]}...")
         
-        for service in services:
-            logger.info(f"  📡 Servis: {service['name']}")
-            
-            # Önce servisi test et
-            success, data = test_rapidapi_key(api_key, youtube_id, service)
-            
-            if success and data:
-                try:
-                    # Video URL'sini bul
-                    video_url = None
+        for api in apis_to_try:
+            try:
+                logger.info(f"  📡 API: {api['name']}")
+                
+                headers = {
+                    "X-RapidAPI-Key": api_key,
+                    "X-RapidAPI-Host": api['host']
+                }
+                
+                params = {"id": youtube_id}
+                
+                logger.debug(f"  API çağrısı: {api['url']}?id={youtube_id}")
+                response = requests.get(api['url'], headers=headers, params=params, timeout=30)
+                logger.debug(f"  API Response: {response.status_code}")
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    logger.info(f"  ✅ API yanıt aldı: {data.get('comment', 'No comment')}")
                     
-                    if isinstance(data, dict):
-                        # Farklı formatlardaki yanıtları parse et
-                        if 'link' in data:
-                            video_url = data['link']
-                        elif 'url' in data:
-                            video_url = data['url']
-                        elif 'formats' in data and data['formats']:
-                            # En iyi formatı seç
-                            best_format = None
-                            for fmt in data['formats']:
-                                if 'url' in fmt:
-                                    if not best_format or fmt.get('height', 0) > best_format.get('height', 0):
-                                        best_format = fmt
-                            if best_format:
-                                video_url = best_format['url']
+                    # JSON'daki verileri kontrol et
+                    logger.info(f"  📊 Video bilgileri:")
+                    logger.info(f"    - Boyut: {data.get('size', 'Bilinmiyor')} bytes")
+                    logger.info(f"    - Bitrate: {data.get('bitrate', 'Bilinmiyor')}")
+                    logger.info(f"    - Kalite: {data.get('quality', 'Bilinmiyor')}")
+                    logger.info(f"    - Tür: {data.get('type', 'Bilinmiyor')}")
                     
-                    if video_url:
-                        logger.info(f"  ✅ Video URL bulundu: {video_url[:80]}...")
+                    if 'file' in data:
+                        video_url = data['file']
+                        reserved_url = data.get('reserved_file', video_url)
                         
-                        # Video indir
-                        headers = {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                            'Referer': 'https://www.youtube.com/'
-                        }
+                        logger.info(f"  📹 Video URL: {video_url}")
+                        logger.info(f"  🔄 Yedek URL: {reserved_url}")
                         
-                        logger.info("  📥 Video indiriliyor...")
-                        response = requests.get(video_url, headers=headers, stream=True, timeout=60)
+                        # Video hazır olana kadar bekle (maksimum 300 saniye)
+                        max_wait_time = 300  # 5 dakika
+                        wait_interval = 30   # 30 saniyede bir kontrol et
+                        waited = 0
+                        video_ready = False
                         
-                        if response.status_code == 200:
-                            total_size = int(response.headers.get('content-length', 0))
-                            downloaded = 0
+                        # Önce ana URL'yi dene, olmazsa yedek URL'yi dene
+                        urls_to_try = [video_url, reserved_url]
+                        
+                        for current_url in urls_to_try:
+                            logger.info(f"  🔄 URL deneniyor: {current_url[:80]}...")
                             
+                            while waited < max_wait_time and not video_ready:
+                                logger.info(f"  ⏳ Video hazırlanıyor... {waited}/{max_wait_time} saniye bekleniyor")
+                                
+                                try:
+                                    # Video URL'sine HEAD isteği atarak hazır olup olmadığını kontrol et
+                                    head_response = requests.head(current_url, timeout=10)
+                                    logger.debug(f"  HEAD Response: {head_response.status_code}")
+                                    
+                                    if head_response.status_code == 200:
+                                        # Content-Length kontrolü
+                                        content_length = head_response.headers.get('content-length')
+                                        if content_length and int(content_length) > 0:
+                                            logger.info(f"  ✅ Video hazır! Boyut: {int(content_length)/1024/1024:.1f} MB")
+                                            video_ready = True
+                                            video_url = current_url
+                                            break
+                                        else:
+                                            logger.info(f"  ⚠️ Video hazır ama boyut 0")
+                                    elif head_response.status_code == 404:
+                                        # Henüz hazır değil
+                                        logger.info(f"  ⏱️ Video henüz hazır değil (404), {wait_interval} saniye bekleniyor...")
+                                    else:
+                                        logger.warning(f"  ⚠️ Beklenmeyen HTTP kodu: {head_response.status_code}")
+                                
+                                except Exception as e:
+                                    logger.warning(f"  ⚠️ HEAD isteği hatası: {str(e)[:100]}")
+                                
+                                # Bekle
+                                time.sleep(wait_interval)
+                                waited += wait_interval
+                            
+                            if video_ready:
+                                break
+                            else:
+                                logger.warning(f"  ⚠️ Bu URL başarısız, diğer URL deneniyor...")
+                        
+                        if video_ready:
+                            logger.info("  ✅ Video hazır, indiriliyor...")
+                            
+                            # Videoyu indir (stream ile)
+                            video_response = requests.get(video_url, stream=True, timeout=60)
+                            
+                            # Content-Length kontrolü
+                            total_size = int(video_response.headers.get('content-length', 0))
+                            logger.info(f"  📥 İndirilecek boyut: {total_size/1024/1024:.1f} MB")
+                            
+                            if total_size == 0:
+                                logger.error("  ❌ Video boyutu 0, indirme iptal")
+                                return False
+                            
+                            downloaded = 0
                             with open(output_file, 'wb') as f:
-                                for chunk in response.iter_content(chunk_size=8192):
+                                for chunk in video_response.iter_content(chunk_size=8192):
                                     if chunk:
                                         f.write(chunk)
                                         downloaded += len(chunk)
+                                        
+                                        # İlerlemeyi logla (her 5MB'da bir)
+                                        if downloaded % (5 * 1024 * 1024) < 8192:
+                                            progress = (downloaded / total_size) * 100
+                                            logger.info(f"  📊 İndirme: {downloaded/1024/1024:.1f}/{total_size/1024/1024:.1f} MB ({progress:.1f}%)")
                             
-                            file_size = os.path.getsize(output_file)
-                            if file_size > 1024000:  # 1MB'den büyük
-                                logger.info(f"  ✅ RapidAPI ile indirildi! ({file_size/1024/1024:.1f} MB)")
-                                logger.info(f"  🎯 Kullanılan Servis: {service['name']}")
-                                logger.info(f"  🔑 Kullanılan Key: {api_key[:8]}...{api_key[-4:]}")
-                                return True
+                            if os.path.exists(output_file):
+                                file_size = os.path.getsize(output_file)
+                                logger.info(f"  ✅ İndirme tamamlandı! Dosya boyutu: {file_size/1024/1024:.1f} MB")
+                                
+                                if file_size > 1024000:  # 1MB'den büyük
+                                    logger.info(f"  ✅ RapidAPI ile indirildi! ({file_size/1024/1024:.1f} MB)")
+                                    return True
+                                else:
+                                    logger.warning(f"  ⚠️ Dosya çok küçük: {file_size} bytes")
+                                    os.remove(output_file)
+                                    return False
                             else:
-                                logger.warning(f"  ⚠️ İndirilen dosya çok küçük: {file_size} bytes")
-                                os.remove(output_file)
+                                logger.error("  ❌ İndirilen dosya oluşmadı")
+                                return False
                         else:
-                            logger.error(f"  ❌ Video indirme hatası: {response.status_code}")
-                    
+                            logger.error("  ❌ Video hazırlanmak için çok uzun sürdü (timeout)")
+                            return False
                     else:
-                        logger.warning(f"  ⚠️ Video URL bulunamadı. Data keys: {list(data.keys())}")
-                        
-                except Exception as e:
-                    logger.error(f"  ❌ İndirme hatası: {str(e)}", exc_info=True)
-            else:
-                logger.warning(f"  ⚠️ Servis başarısız: {service['name']}")
-            
-            # Servisler arasında kısa bekle
-            time.sleep(2)
+                        logger.warning(f"  ⚠️ Yanıtta 'file' anahtarı yok. Yanıt: {data}")
+                        return False
+                
+                elif response.status_code == 403:
+                    logger.warning(f"  ⚠️ API'ye abone değilsiniz: {api['name']}")
+                elif response.status_code == 429:
+                    logger.warning(f"  ⚠️ Rate limit aşıldı: {api['name']}")
+                else:
+                    logger.warning(f"  ⚠️ HTTP {response.status_code}: {response.text[:100]}")
+                    
+                # API'ler arasında kısa bekle
+                time.sleep(1)
+                
+            except Exception as e:
+                logger.error(f"  ❌ API hatası: {str(e)}", exc_info=True)
         
         # Key'ler arasında bekle
-        logger.info(f"⏳ Bir sonraki key için 5 saniye bekleniyor...")
-        time.sleep(5)
+        time.sleep(2)
     
-    logger.error("❌ Tüm RapidAPI key'leri ve servisleri başarısız!")
+    logger.error("❌ Tüm RapidAPI denemeleri başarısız!")
     return False
 
 # ============================================
