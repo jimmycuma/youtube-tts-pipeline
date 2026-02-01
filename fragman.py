@@ -68,13 +68,7 @@ def create_unified_cover(tmdb_id, film_adi, cover_duration=5):
         if not os.path.exists(font_path):
             font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
             if not os.path.exists(font_path):
-                # Sistemde herhangi bir font bul
-                cmd = ['fc-match', '-f', '%{file}']
-                result = subprocess.run(cmd, capture_output=True, text=True)
-                if result.returncode == 0 and result.stdout.strip():
-                    font_path = result.stdout.strip()
-                else:
-                    font_path = "Arial"  # Varsayılan font adı
+                font_path = "Arial"
         
         filter_parts = []
         
@@ -83,7 +77,7 @@ def create_unified_cover(tmdb_id, film_adi, cover_duration=5):
             filter_parts.append(
                 f"movie={backdrop_file},scale=1920:1080,"
                 f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,"
-                f"colorchannelmixer=aa=0.6,"  # %40 karartma
+                f"colorchannelmixer=aa=0.6,"
                 f"zoompan=z='1.00':d={cover_duration*25}[bg]"
             )
         else:
@@ -114,7 +108,6 @@ def create_unified_cover(tmdb_id, film_adi, cover_duration=5):
             f"text='İ N C E L E M E':fontcolor=#40E0D0:fontsize=42:"
             f"borderw=2:bordercolor=black@0.6:"
             f"x=(w-text_w)/2:y=(h-text_h)/2+60[with_subtitle];"
-            # Altına çizgi
             f"[with_subtitle]drawbox=x=(w-180)/2:y=(h-text_h)/2+110:"
             f"w=180:h=3:color=#40E0D0:t=fill[final]"
         )
@@ -148,7 +141,7 @@ def create_unified_cover(tmdb_id, film_adi, cover_duration=5):
             print(f"❌ FFmpeg hatası: {result.stderr[:200]}")
             
     except Exception as e:
-        print(f"❌ Kapak hatası: {str(e)[:200]}")
+        print(f"❌ Kapak hatası: {str(e)}")
     
     finally:
         # Temizlik
@@ -184,7 +177,6 @@ def download_ytdlp_enhanced(youtube_url, output_file, max_attempts=3):
         try:
             print(f"🔄 YT-DLP Deneme {attempt+1}/{max_attempts}")
             
-            # Rastgele user-agent
             user_agents = [
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
@@ -210,7 +202,7 @@ def download_ytdlp_enhanced(youtube_url, output_file, max_attempts=3):
             if result.returncode == 0:
                 if os.path.exists(output_file):
                     file_size = os.path.getsize(output_file)
-                    if file_size > 102400:  # 100KB'den büyük
+                    if file_size > 102400:
                         print(f"✅ yt-dlp ile indirildi! ({file_size/1024/1024:.1f} MB)")
                         return True
                     else:
@@ -227,25 +219,57 @@ def download_ytdlp_enhanced(youtube_url, output_file, max_attempts=3):
     
     return False
 
-def download_via_rapidapi_with_key_rotation(youtube_id, output_file, api_keys_str):
+def get_rapidapi_keys():
+    """Tüm RapidAPI key'lerini topla"""
+    keys = []
+    
+    # RAPIDAPI_KEY_1, RAPIDAPI_KEY_2, ... şeklinde tüm key'leri topla
+    i = 1
+    while True:
+        key = os.environ.get(f"RAPIDAPI_KEY_{i}")
+        if not key:
+            # 10'dan fazla key olmaz
+            if i > 10:
+                break
+            i += 1
+            continue
+        
+        key = key.strip()
+        if key and key not in keys:
+            keys.append(key)
+            print(f"🔑 RapidAPI Key {i} bulundu: {key[:10]}...")
+        i += 1
+    
+    # Eski RAPIDAPI_KEYS formatını da destekle
+    old_keys = os.environ.get("RAPIDAPI_KEYS", "")
+    if old_keys:
+        for key in old_keys.split(','):
+            key = key.strip()
+            if key and key not in keys:
+                keys.append(key)
+                print(f"🔑 Eski format RapidAPI Key bulundu: {key[:10]}...")
+    
+    return keys
+
+def download_via_rapidapi_with_key_rotation(youtube_id, output_file):
     """RapidAPI anahtar döngüsü ile indir"""
-    if not api_keys_str or not youtube_id:
+    
+    rapidapi_keys = get_rapidapi_keys()
+    
+    if not rapidapi_keys:
+        print("⚠️ RapidAPI key bulunamadı")
         return False
     
-    api_keys = [key.strip() for key in api_keys_str.split(',') if key.strip()]
-    if not api_keys:
-        return False
+    print(f"🔑 {len(rapidapi_keys)} RapidAPI anahtarı mevcut")
     
-    print(f"🔑 {len(api_keys)} RapidAPI anahtarı mevcut")
+    # Anahtarları karıştır
+    random.shuffle(rapidapi_keys)
     
-    # Anahtarları karıştır (load balancing)
-    random.shuffle(api_keys)
-    
-    for i, api_key in enumerate(api_keys):
+    for i, api_key in enumerate(rapidapi_keys):
         try:
-            print(f"  RapidAPI anahtar {i+1}/{len(api_keys)} deneniyor...")
+            print(f"  RapidAPI anahtar {i+1}/{len(rapidapi_keys)} deneniyor...")
             
-            # Örnek RapidAPI endpoint - gerçek endpoint'i kullanın
+            # YouTube video bilgilerini al
             url = "https://youtube-video-download-info.p.rapidapi.com/dl"
             querystring = {"id": youtube_id}
             headers = {
@@ -258,19 +282,42 @@ def download_via_rapidapi_with_key_rotation(youtube_id, output_file, api_keys_st
             if response.status_code == 200:
                 data = response.json()
                 
-                # Video URL'sini bul
-                if 'link' in data and data['link']:
-                    video_url = data['link'][0] if isinstance(data['link'], list) else data['link']
+                # Formatları kontrol et
+                if 'formats' in data and data['formats']:
+                    # En iyi formatı seç (720p veya daha düşük)
+                    best_format = None
+                    for fmt in data['formats']:
+                        if 'height' in fmt and fmt['height'] <= 720:
+                            if not best_format or fmt['height'] > best_format['height']:
+                                best_format = fmt
                     
-                    # Videoyu indir
-                    video_response = requests.get(video_url, stream=True, timeout=60)
-                    with open(output_file, 'wb') as f:
-                        for chunk in video_response.iter_content(chunk_size=8192):
-                            f.write(chunk)
+                    if best_format and 'url' in best_format:
+                        video_url = best_format['url']
+                        
+                        # Videoyu indir
+                        print(f"📥 Video indiriliyor: {video_url[:80]}...")
+                        video_response = requests.get(video_url, stream=True, timeout=60)
+                        total_size = int(video_response.headers.get('content-length', 0))
+                        
+                        with open(output_file, 'wb') as f:
+                            if total_size == 0:
+                                f.write(video_response.content)
+                            else:
+                                downloaded = 0
+                                for chunk in video_response.iter_content(chunk_size=8192):
+                                    if chunk:
+                                        f.write(chunk)
+                                        downloaded += len(chunk)
                     
-                    if os.path.getsize(output_file) > 102400:
-                        print(f"✅ RapidAPI ile indirildi!")
-                        return True
+                        file_size = os.path.getsize(output_file)
+                        if file_size > 102400:
+                            print(f"✅ RapidAPI ile indirildi! ({file_size/1024/1024:.1f} MB)")
+                            return True
+                        else:
+                            print(f"⚠️ İndirilen dosya çok küçük: {file_size} bytes")
+                            os.remove(output_file)
+                else:
+                    print(f"⚠️ Bu API key ile format bulunamadı")
                 
         except Exception as e:
             print(f"❌ RapidAPI hatası: {str(e)[:100]}")
@@ -285,7 +332,6 @@ def extract_video_id(url):
     
     import re
     
-    # YouTube URL desenleri
     patterns = [
         r'(?:v=|youtu\.be/|embed/|shorts/)([a-zA-Z0-9_-]{11})',
         r'youtube\.com/(?:.*?&)?v=([a-zA-Z0-9_-]{11})',
@@ -307,15 +353,22 @@ def get_youtube_url_from_tmdb(tmdb_id, api_key):
         response = requests.get(url, params=params, timeout=15)
         data = response.json()
         
+        # Önce fragman bul
         for video in data.get('results', []):
-            if video.get('site') == 'YouTube' and video.get('type') in ['Trailer', 'Teaser', 'Clip']:
-                print(f"✅ TMDB'den YouTube videosu bulundu: {video['name']}")
+            if video.get('site') == 'YouTube' and video.get('type') == 'Trailer':
+                print(f"✅ TMDB'den fragman bulundu: {video['name']}")
                 return f"https://www.youtube.com/watch?v={video['key']}"
         
-        # Herhangi bir YouTube videosu
+        # Sonra teaser
+        for video in data.get('results', []):
+            if video.get('site') == 'YouTube' and video.get('type') == 'Teaser':
+                print(f"✅ TMDB'den teaser bulundu: {video['name']}")
+                return f"https://www.youtube.com/watch?v={video['key']}"
+        
+        # Sonra herhangi bir video
         for video in data.get('results', []):
             if video.get('site') == 'YouTube':
-                print(f"✅ TMDB'den YouTube videosu bulundu: {video['name']}")
+                print(f"✅ TMDB'den video bulundu: {video['name']}")
                 return f"https://www.youtube.com/watch?v={video['key']}"
                 
     except Exception as e:
@@ -338,9 +391,8 @@ def get_main_content_via_3layer(youtube_url, tmdb_id, film_adi, duration, output
     
     # KATMAN 2: RapidAPI
     print("  2. Katman: RapidAPI deneniyor...")
-    rapidapi_keys = os.environ.get("RAPIDAPI_KEYS", "")
-    if rapidapi_keys and youtube_id:
-        if download_via_rapidapi_with_key_rotation(youtube_id, output_file, rapidapi_keys):
+    if youtube_id:
+        if download_via_rapidapi_with_key_rotation(youtube_id, output_file):
             return True
     
     # KATMAN 3: TMDB Sinematik İçerik
@@ -409,6 +461,11 @@ def create_cinematic_content(tmdb_id, film_adi, duration, output_file):
 def combine_cover_and_content(cover_path, content_path, output_path):
     """Kapak ve içeriği birleştir."""
     try:
+        # Dosyaların var olduğundan emin ol
+        if not os.path.exists(cover_path) or not os.path.exists(content_path):
+            print(f"❌ Birleştirilecek dosyalar bulunamadı: {cover_path}, {content_path}")
+            return False
+            
         cmd = [
             'ffmpeg', '-y',
             '-i', cover_path,
@@ -438,7 +495,7 @@ def add_tts_to_video(video_path, tts_url, output_path):
         
         # TTS süresini kontrol et
         tts_size = os.path.getsize(tts_file)
-        if tts_size < 1024:  # 1KB'den küçükse hata
+        if tts_size < 1024:
             print("⚠️ TTS dosyası çok küçük")
             os.remove(tts_file)
             return False
@@ -462,7 +519,6 @@ def add_tts_to_video(video_path, tts_url, output_path):
         
     except Exception as e:
         print(f"❌ TTS ekleme hatası: {e}")
-        # Temizlik
         if os.path.exists("tts_temp.mp3"):
             os.remove("tts_temp.mp3")
         return False
@@ -470,7 +526,6 @@ def add_tts_to_video(video_path, tts_url, output_path):
 def get_tts_duration(tts_url):
     """TTS sesinin süresini al."""
     try:
-        # TTS indir ve süreyi ölç
         tts_temp = "temp_tts.mp3"
         response = requests.get(tts_url, timeout=30)
         with open(tts_temp, 'wb') as f:
@@ -490,7 +545,7 @@ def get_tts_duration(tts_url):
     except Exception as e:
         print(f"⚠️ TTS süresi alınamadı: {e}")
     
-    return 180  # Varsayılan süre: 3 dakika
+    return 180
 
 # ============================================
 # 4. ANA İŞ AKIŞI (1+3+1 MODEL)
@@ -500,11 +555,10 @@ def main():
         # GitHub event verilerini al
         event_path = os.environ.get("GITHUB_EVENT_PATH")
         if not event_path or not os.path.exists(event_path):
-            print("❌ GITHUB_EVENT_PATH bulunamadı!")
-            # Manuel test için
+            print("❌ GITHUB_EVENT_PATH bulunamadı! Test modunda çalışılıyor...")
             p = {
                 "film_id": "test_001",
-                "tmdb_id": "551",  # The Mummy
+                "tmdb_id": "551",
                 "film_adi": "Anakonda",
                 "ses_url": "https://api.streamelements.com/kappa/v2/speech?voice=Filiz&text=Merhaba bu bir test",
                 "callback": "https://webhook.site/test"
@@ -537,7 +591,6 @@ def main():
         print("ADIM 2: 3 KATMANLA ANA İÇERİK")
         print("="*60)
         
-        # YouTube URL'sini al
         TMDB_KEY = os.environ.get("TMDB_API_KEY", "")
         youtube_url = None
         if TMDB_KEY:
@@ -547,15 +600,13 @@ def main():
             else:
                 print("⚠️ TMDB'den YouTube URL'si alınamadı")
         
-        # TTS süresini al
         tts_duration = get_tts_duration(ses_url)
         
-        # 3 Katmanla içerik al
         content_file = f"content_{film_id}.mp4"
         if not get_main_content_via_3layer(youtube_url, tmdb_id, film_adi, tts_duration, content_file):
-            print("❌ İçerik alınamadı!")
-            # Yedek: Siyah ekran
-            return create_fallback_video(film_adi, tts_duration, content_file)
+            print("❌ İçerik alınamadı! Yedek video oluşturuluyor...")
+            if not create_fallback_video(film_adi, tts_duration, content_file):
+                return False
         
         # ADIM 3: BİRLEŞTİRME ve TTS
         print("\n" + "="*60)
@@ -597,12 +648,21 @@ def main():
         
         # TEMİZLİK
         print("\n🧹 Temizlik yapılıyor...")
-        for temp_file in [cover_file, content_file, combined_file, final_file]:
-            if temp_file and os.path.exists(temp_file) and temp_file != final_file:
+        temp_files = [cover_file, content_file, combined_file, final_file]
+        for temp_file in temp_files:
+            if temp_file and os.path.exists(temp_file):
                 try:
-                    os.remove(temp_file)
+                    if temp_file != final_file:  # Final dosyasını sonra sil
+                        os.remove(temp_file)
                 except:
                     pass
+        
+        # Final dosyasını da temizle
+        if os.path.exists(final_file):
+            try:
+                os.remove(final_file)
+            except:
+                pass
         
         print("\n✅ 1+3+1 SİSTEMİ TAMAMLANDI!")
         return True
