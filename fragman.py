@@ -48,7 +48,7 @@ def create_unified_cover(tmdb_id, film_adi, cover_duration=5):
             backdrop_url = f"{base_url}{backdrop_path}"
             backdrop_file = f"backdrop_{tmdb_id}.jpg"
             with open(backdrop_file, 'wb') as f:
-                f.write(requests.get(backdrop_url, timeout=20).content())
+                f.write(requests.get(backdrop_url, timeout=20).content)
             temp_files.append(backdrop_file)
         
         if poster_path:
