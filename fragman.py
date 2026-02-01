@@ -162,6 +162,52 @@ def create_simple_cover(film_adi, output_file, duration=5):
     except:
         return None
 
+def download_ytdlp_enhanced(youtube_url, output_file, max_attempts=3):
+    """Gelişmiş yt-dlp ile YouTube videosu indir"""
+    
+    for attempt in range(max_attempts):
+        try:
+            print(f"🔄 YT-DLP Deneme {attempt+1}/{max_attempts}")
+            
+            # Rastgele user-agent
+            user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            
+            cmd = [
+                'yt-dlp',
+                '--no-cookies',
+                '--geo-bypass',
+                '--retries', '5',
+                '--fragment-retries', '5',
+                '--socket-timeout', '30',
+                '--user-agent', user_agent,
+                '-f', 'best[height<=720]/best[height<=480]',
+                '-o', output_file,
+                '--quiet',
+                youtube_url
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            
+            if result.returncode == 0:
+                if os.path.exists(output_file):
+                    file_size = os.path.getsize(output_file)
+                    if file_size > 102400:  # 100KB'den büyük
+                        print(f"✅ yt-dlp ile indirildi! ({file_size/1024/1024:.1f} MB)")
+                        return True
+                    else:
+                        print(f"⚠️ Dosya çok küçük: {file_size} bytes")
+                        os.remove(output_file)
+                        
+        except Exception as e:
+            print(f"❌ YT-DLP hatası: {str(e)[:100]}")
+        
+        if attempt < max_attempts - 1:
+            wait_time = (attempt + 1) * 5
+            print(f"⏳ {wait_time} saniye bekleniyor...")
+            time.sleep(wait_time)
+    
+    return False
+
 # ============================================
 # 2. 3 KATMANLI İÇERİK SİSTEMİ
 # ============================================
