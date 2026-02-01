@@ -60,7 +60,7 @@ for i, part in enumerate(parts):
 
     cmd = [
         "edge-tts",
-        "--voice", "tr-TR-AhmetNeural",
+        "--voice", "tr-TR-EmelNeural",
         "--text", part,
         "--write-media", out_file
     ]
