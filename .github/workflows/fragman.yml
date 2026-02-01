@@ -32,7 +32,7 @@ jobs:
       - name: 🎬 Fragman Üret
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-          RAPIDAPI_KEYS: ${{ secrets.RAPIDAPI_KEY_1 }},${{ secrets.RAPIDAPI_KEY_2 }}  # Anahtarları virgülle birleştir
+          RAPIDAPI_KEYS: ${{ secrets.RAPIDAPI_KEY_1 }},${{ secrets.RAPIDAPI_KEY_2 }},${{ secrets.RAPIDAPI_KEY_3 }}# Anahtarları virgülle birleştir
         run: |
           echo "Başlangıç: $(date)"
           python3 fragman.py
