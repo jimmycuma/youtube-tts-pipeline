@@ -22,10 +22,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-          - name: Bağımlılıkları kur
-             run: |
-              pip install edge-tts requests
-              pip install git+https://github.com/ysharma3501/MiraTTS.git
+       - name: Bağımlılıkları kur
+        run: |
+         sudo apt update
+         sudo apt install -y ffmpeg
+         pip install edge-tts requests
 
       - name: TTS üret ve gönder
         run: |
