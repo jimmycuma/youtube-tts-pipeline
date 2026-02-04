@@ -22,17 +22,27 @@ from datetime import datetime
 # LOGLAMA
 # ============================================
 
+import logging
+import sys
+from datetime import datetime
+
 def setup_logging():
-    logger = logging.getLogger()
+    logger = logging.getLogger("fragman_logger")
     logger.setLevel(logging.DEBUG)
 
-    console_handler = logging.StreamHandler()
+    # Aynı handler tekrar eklenmesin
+    if logger.handlers:
+        return logger
+
+    # Console handler (stdout)
+    console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     console_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     console_handler.setFormatter(console_format)
 
+    # File handler (utf-8)
     log_filename = f"fragman_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
- file_handler = logging.FileHandler(log_filename, encoding="utf-8")
+    file_handler = logging.FileHandler(log_filename, encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
     file_format = logging.Formatter('%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')
     file_handler.setFormatter(file_format)
@@ -41,7 +51,6 @@ def setup_logging():
     logger.addHandler(file_handler)
 
     return logger
-
 
 logger = setup_logging()
 
