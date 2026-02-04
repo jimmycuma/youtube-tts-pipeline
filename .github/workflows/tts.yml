@@ -17,9 +17,15 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: FFmpeg kur
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
       - name: Bağımlılıkları kur
         run: |
           pip install edge-tts requests
+          pip install miratts
 
       - name: TTS üret ve gönder
         run: |
