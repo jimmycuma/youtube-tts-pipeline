@@ -3,7 +3,6 @@ import os
 import subprocess
 import requests
 import tempfile
-import shutil
 
 # ---------------------------
 # GITHUB EVENT
@@ -21,9 +20,9 @@ callback = payload["callback"]
 print("🎬 Film ID:", film_id)
 
 # ---------------------------
-# METNİ PARÇALA (TTS LIMIT)
+# METNİ PARÇALA (EDGE TTS LIMIT)
 # ---------------------------
-def split_text(text, limit=450):
+def split_text(text, limit=500):
     parts = []
     current = ""
 
@@ -53,113 +52,84 @@ tmp_dir = tempfile.mkdtemp()
 audio_files = []
 
 # ---------------------------
-# MİRATTS VAR MI?
+# PARÇA PARÇA SES ÜRET
 # ---------------------------
-def miratts_available():
-    return shutil.which("miratts") is not None
-
-# ---------------------------
-# MİRATTS İLE ÜRET
-# ---------------------------
-def generate_with_miratts(text_part, out_file):
-    cmd = [
-        "miratts",
-        "--text", text_part,
-        "--output", out_file,
-        "--lang", "tr"
-    ]
-    subprocess.run(cmd, check=True)
-
-# ---------------------------
-# EDGE TTS İLE ÜRET
-# ---------------------------
-def generate_with_edge_tts(text_part, out_file):
-    cmd = [
-        "edge-tts",
-        "--voice", "tr-TR-EmelNeural",
-        "--text", text_part,
-        "--write-media", out_file
-    ]
-    subprocess.run(cmd, check=True)
-
-# ---------------------------
-# PARÇA PARÇA SES ÜRET (MiraTTS -> Edge fallback)
-# ---------------------------
-use_miratts = miratts_available()
-
-if use_miratts:
-    print("🔥 MiraTTS bulundu, ana sistem MiraTTS!")
-else:
-    print("⚠️ MiraTTS yok, Edge-TTS fallback devrede.")
-
 for i, part in enumerate(parts):
     out_file = os.path.join(tmp_dir, f"part_{i}.mp3")
 
-    try:
-        if use_miratts:
-            generate_with_miratts(part, out_file)
-        else:
-            generate_with_edge_tts(part, out_file)
+    cmd = [
+        "edge-tts",
+        "--voice", "tr-TR-EmelNeural",
+        "--text", part,
+        "--write-media", out_file
+    ]
 
-        audio_files.append(out_file)
-        print(f"✅ Parça {i+1} üretildi")
+    subprocess.run(cmd, check=True)
+    audio_files.append(out_file)
 
-    except Exception as e:
-        print(f"❌ Parça {i+1} üretilemedi: {str(e)}")
-        print("⚠️ Edge-TTS ile tekrar deneniyor...")
-
-        try:
-            generate_with_edge_tts(part, out_file)
-            audio_files.append(out_file)
-            print(f"✅ Parça {i+1} Edge-TTS ile üretildi")
-        except Exception as e2:
-            print(f"⛔ Parça {i+1} tamamen başarısız: {str(e2)}")
-            raise SystemExit(1)
+    print(f"✅ Parça {i+1} üretildi")
 
 # ---------------------------
-# MP3'LERİ FFMPEG İLE BİRLEŞTİR (DOĞRU YÖNTEM)
+# MP3 CONCAT LIST (FFMPEG)
 # ---------------------------
-final_file = f"ses_{film_id}.mp3"
-concat_list = os.path.join(tmp_dir, "concat.txt")
+concat_file = os.path.join(tmp_dir, "concat.txt")
 
-with open(concat_list, "w", encoding="utf-8") as f:
+with open(concat_file, "w", encoding="utf-8") as f:
     for af in audio_files:
         f.write(f"file '{af}'\n")
 
-print("🔗 FFmpeg ile sesler birleştiriliyor...")
+raw_audio = f"raw_{film_id}.mp3"
+final_audio = f"ses_{film_id}.mp3"
 
-cmd_concat = [
+print("🔗 Parçalar birleştiriliyor...")
+
+subprocess.run([
     "ffmpeg", "-y",
     "-f", "concat",
     "-safe", "0",
-    "-i", concat_list,
+    "-i", concat_file,
     "-c", "copy",
-    final_file
-]
+    raw_audio
+], check=True)
 
-subprocess.run(cmd_concat, check=True)
+print("✅ Ham ses birleştirildi:", raw_audio)
 
-print("🎧 Final ses oluşturuldu:", final_file)
+# ---------------------------
+# MASTERING (DUYGULU SES EFEKTİ)
+# ---------------------------
+print("🎚️ Mastering uygulanıyor (EQ + Compressor + Reverb + Normalize)...")
+
+ffmpeg_filter = (
+    "equalizer=f=120:t=q:w=1:g=4,"     # bass boost
+    "equalizer=f=3000:t=q:w=1:g=2,"    # clarity boost
+    "acompressor=threshold=-18dB:ratio=3:attack=20:release=250,"
+    "alimiter=limit=0.9,"
+    "aecho=0.8:0.88:60:0.25,"          # reverb/echo vibe
+    "loudnorm=I=-14:TP=-1.5:LRA=11"    # youtube standard
+)
+
+subprocess.run([
+    "ffmpeg", "-y",
+    "-i", raw_audio,
+    "-af", ffmpeg_filter,
+    "-b:a", "192k",
+    final_audio
+], check=True)
+
+print("🎧 Final mastering ses oluşturuldu:", final_audio)
 
 # ---------------------------
 # SUNUCUYA GERİ GÖNDER
 # ---------------------------
 print("📤 Sunucuya gönderiliyor...")
 
-with open(final_file, "rb") as audio:
+with open(final_audio, "rb") as audio:
     response = requests.post(
         callback,
         files={"audio": audio},
         data={"film_id": film_id},
-        timeout=180
+        timeout=120
     )
 
 print("📡 Callback HTTP:", response.status_code)
-
-# ---------------------------
-# TEMİZLİK
-# ---------------------------
-try:
-    shutil.rmtree(tmp_dir)
-except:
-    pass
+print("✅ İşlem tamamlandı.")
