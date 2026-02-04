@@ -24,9 +24,7 @@ jobs:
 
       - name: Bağımlılıkları kur
         run: |
-         sudo apt update
-         sudo apt install -y ffmpeg
-         pip install edge-tts requests
+          pip install edge-tts requests
 
       - name: TTS üret ve gönder
         run: |
