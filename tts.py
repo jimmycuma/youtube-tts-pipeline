@@ -3,6 +3,7 @@ import os
 import subprocess
 import requests
 import tempfile
+import shutil
 
 # ---------------------------
 # GITHUB EVENT
@@ -20,9 +21,9 @@ callback = payload["callback"]
 print("🎬 Film ID:", film_id)
 
 # ---------------------------
-# METNİ PARÇALA (EDGE TTS LIMIT)
+# METNİ PARÇALA (TTS LIMIT)
 # ---------------------------
-def split_text(text, limit=500):
+def split_text(text, limit=450):
     parts = []
     current = ""
 
@@ -43,7 +44,6 @@ def split_text(text, limit=500):
     return parts
 
 parts = split_text(text)
-
 print(f"🔊 Parça sayısı: {len(parts)}")
 
 # ---------------------------
@@ -53,32 +53,91 @@ tmp_dir = tempfile.mkdtemp()
 audio_files = []
 
 # ---------------------------
-# PARÇA PARÇA SES ÜRET
+# MİRATTS VAR MI?
 # ---------------------------
-for i, part in enumerate(parts):
-    out_file = os.path.join(tmp_dir, f"part_{i}.mp3")
+def miratts_available():
+    return shutil.which("miratts") is not None
 
+# ---------------------------
+# MİRATTS İLE ÜRET
+# ---------------------------
+def generate_with_miratts(text_part, out_file):
+    cmd = [
+        "miratts",
+        "--text", text_part,
+        "--output", out_file,
+        "--lang", "tr"
+    ]
+    subprocess.run(cmd, check=True)
+
+# ---------------------------
+# EDGE TTS İLE ÜRET
+# ---------------------------
+def generate_with_edge_tts(text_part, out_file):
     cmd = [
         "edge-tts",
         "--voice", "tr-TR-EmelNeural",
-        "--text", part,
+        "--text", text_part,
         "--write-media", out_file
     ]
-
     subprocess.run(cmd, check=True)
-    audio_files.append(out_file)
-
-    print(f"✅ Parça {i+1} üretildi")
 
 # ---------------------------
-# MP3'LERİ BİRLEŞTİR (FFMPEG YOK → BINARY CONCAT)
+# PARÇA PARÇA SES ÜRET (MiraTTS -> Edge fallback)
+# ---------------------------
+use_miratts = miratts_available()
+
+if use_miratts:
+    print("🔥 MiraTTS bulundu, ana sistem MiraTTS!")
+else:
+    print("⚠️ MiraTTS yok, Edge-TTS fallback devrede.")
+
+for i, part in enumerate(parts):
+    out_file = os.path.join(tmp_dir, f"part_{i}.mp3")
+
+    try:
+        if use_miratts:
+            generate_with_miratts(part, out_file)
+        else:
+            generate_with_edge_tts(part, out_file)
+
+        audio_files.append(out_file)
+        print(f"✅ Parça {i+1} üretildi")
+
+    except Exception as e:
+        print(f"❌ Parça {i+1} üretilemedi: {str(e)}")
+        print("⚠️ Edge-TTS ile tekrar deneniyor...")
+
+        try:
+            generate_with_edge_tts(part, out_file)
+            audio_files.append(out_file)
+            print(f"✅ Parça {i+1} Edge-TTS ile üretildi")
+        except Exception as e2:
+            print(f"⛔ Parça {i+1} tamamen başarısız: {str(e2)}")
+            raise SystemExit(1)
+
+# ---------------------------
+# MP3'LERİ FFMPEG İLE BİRLEŞTİR (DOĞRU YÖNTEM)
 # ---------------------------
 final_file = f"ses_{film_id}.mp3"
+concat_list = os.path.join(tmp_dir, "concat.txt")
 
-with open(final_file, "ab") as final:
+with open(concat_list, "w", encoding="utf-8") as f:
     for af in audio_files:
-        with open(af, "rb") as f:
-            final.write(f.read())
+        f.write(f"file '{af}'\n")
+
+print("🔗 FFmpeg ile sesler birleştiriliyor...")
+
+cmd_concat = [
+    "ffmpeg", "-y",
+    "-f", "concat",
+    "-safe", "0",
+    "-i", concat_list,
+    "-c", "copy",
+    final_file
+]
+
+subprocess.run(cmd_concat, check=True)
 
 print("🎧 Final ses oluşturuldu:", final_file)
 
@@ -92,7 +151,15 @@ with open(final_file, "rb") as audio:
         callback,
         files={"audio": audio},
         data={"film_id": film_id},
-        timeout=120
+        timeout=180
     )
 
 print("📡 Callback HTTP:", response.status_code)
+
+# ---------------------------
+# TEMİZLİK
+# ---------------------------
+try:
+    shutil.rmtree(tmp_dir)
+except:
+    pass
