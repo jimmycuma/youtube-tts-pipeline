@@ -114,34 +114,45 @@ def extract_video_id(url):
 
 def get_youtube_url_from_tmdb(tmdb_id, api_key):
     try:
-        url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/videos"
-        params = {'api_key': api_key, 'language': 'tr-TR'}
-        response = requests.get(url, params=params, timeout=15)
+        languages = ["tr-TR", "tr", "en-US", "en", None]
 
-        if response.status_code != 200:
-            logger.error(f"❌ TMDB videos API hata: {response.status_code}")
-            return None
+        for lang in languages:
+            url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/videos"
+            params = {'api_key': api_key}
 
-        data = response.json()
-        results = data.get("results", [])
+            if lang:
+                params["language"] = lang
 
-        # Önce Trailer ara
-        for video in results:
-            if video.get("site") == "YouTube" and video.get("type") == "Trailer":
-                key = video.get("key")
-                name = video.get("name", "")
-                logger.info(f"✅ TMDB Trailer bulundu: {name}")
-                return f"https://www.youtube.com/watch?v={key}"
+            response = requests.get(url, params=params, timeout=15)
 
-        # Trailer yoksa herhangi YouTube video
-        for video in results:
-            if video.get("site") == "YouTube":
-                key = video.get("key")
-                name = video.get("name", "")
-                logger.info(f"✅ TMDB YouTube video bulundu: {name}")
-                return f"https://www.youtube.com/watch?v={key}"
+            if response.status_code != 200:
+                logger.error(f"❌ TMDB videos API hata ({lang}): {response.status_code}")
+                continue
 
-        logger.warning("⚠️ TMDB içinde YouTube fragman bulunamadı")
+            data = response.json()
+            results = data.get("results", [])
+
+            if not results:
+                logger.warning(f"⚠️ TMDB sonuç yok ({lang})")
+                continue
+
+            # Önce Trailer ara
+            for video in results:
+                if video.get("site") == "YouTube" and video.get("type") == "Trailer":
+                    key = video.get("key")
+                    name = video.get("name", "")
+                    logger.info(f"✅ TMDB Trailer bulundu ({lang}): {name}")
+                    return f"https://www.youtube.com/watch?v={key}"
+
+            # Trailer yoksa herhangi YouTube video al
+            for video in results:
+                if video.get("site") == "YouTube":
+                    key = video.get("key")
+                    name = video.get("name", "")
+                    logger.info(f"✅ TMDB YouTube video bulundu ({lang}): {name}")
+                    return f"https://www.youtube.com/watch?v={key}"
+
+        logger.warning("⚠️ TMDB içinde hiçbir dilde YouTube fragman bulunamadı")
         return None
 
     except Exception as e:
