@@ -190,7 +190,7 @@ def download_via_rapidapi_fast(youtube_id, output_file):
             logger.info(f"📌 RapidAPI URL alındı, video hazırlanıyor...")
 
             # Video hazır olana kadar bekle (max 300sn)
-            for wait_seconds in range(0, 300, 20):
+            for wait_seconds in range(0, 240, 20):
                 for url in [video_url, reserved_url]:
                     try:
                         logger.info(f"⏳ Kontrol {wait_seconds}/300: {url[:60]}...")
