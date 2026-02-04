@@ -32,7 +32,7 @@ def setup_logging():
     console_handler.setFormatter(console_format)
 
     log_filename = f"fragman_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-    file_handler = logging.FileHandler(log_filename)
+ file_handler = logging.FileHandler(log_filename, encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
     file_format = logging.Formatter('%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')
     file_handler.setFormatter(file_format)
