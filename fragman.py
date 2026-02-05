@@ -192,7 +192,7 @@ def download_via_rapidapi_fast(youtube_id, output_file):
         try:
             logger.info(f"🚀 RapidAPI deneniyor: {api_key[:8]}...")
 
-            conn = http.client.HTTPSConnection(host, timeout=60)
+            conn = http.client.HTTPSConnection(host, timeout=120)
 
             headers = {
                 "x-rapidapi-key": api_key.strip(),
