@@ -1,5 +1,5 @@
 export PYTHONIOENCODING=utf-8
-python3 main.py
+python3 fragman.py
 #!/usr/bin/env python3
 """
 fragman.py - Film İnceleme Fragman Sistemi (SADECE RAPIDAPI)
