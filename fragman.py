@@ -163,39 +163,31 @@ def get_youtube_url_from_tmdb(tmdb_id, api_key):
 # ============================================
 # RAPIDAPI İLE İNDİRME
 # ============================================
-
 def download_via_rapidapi_fast(youtube_id, output_file):
     rapidapi_keys = get_rapidapi_keys()
     if not rapidapi_keys:
         logger.error("❌ RapidAPI key yok")
         return False
 
-    api_endpoint = "https://youtube-video-fast-downloader-24-7.p.rapidapi.com"
-    api_url = f"{api_endpoint}/download_video/{youtube_id}?quality=247"
+    api_url = f"https://youtube-video-fast-downloader-24-7.p.rapidapi.com/download_video/{youtube_id}?quality=247"
 
     for api_key in rapidapi_keys:
         try:
             logger.info(f"🚀 RapidAPI deneniyor: {api_key[:8]}...")
 
             headers = {
-                "x-rapidapi-key": api_key.strip(),
+                "x-rapidapi-key": str(api_key).strip(),
                 "x-rapidapi-host": "youtube-video-fast-downloader-24-7.p.rapidapi.com"
             }
 
-            # API çağır
-            r = requests.get(api_url, headers=headers, timeout=30)
+            r = requests.get(api_url, headers=headers, timeout=90)
 
             if r.status_code != 200:
                 logger.warning(f"⚠️ RapidAPI HTTP {r.status_code}: {r.text[:200]}")
                 time.sleep(2)
                 continue
 
-            try:
-                video_info = r.json()
-            except Exception as e:
-                logger.warning(f"⚠️ JSON parse edilemedi: {str(e)} | {r.text[:200]}")
-                time.sleep(2)
-                continue
+            video_info = r.json()
 
             video_url = video_info.get("file")
             reserved_url = video_info.get("reserved_file") or video_url
@@ -205,45 +197,33 @@ def download_via_rapidapi_fast(youtube_id, output_file):
                 time.sleep(2)
                 continue
 
-            logger.info("📌 RapidAPI URL alındı, video hazırlanıyor...")
+            logger.info("📌 RapidAPI link alındı, video hazırlanıyor...")
 
-            # Video hazır olana kadar bekle (max 240sn)
-            for wait_seconds in range(0, 240, 20):
+            for wait_seconds in range(0, 300, 20):
                 for url in [video_url, reserved_url]:
                     try:
-                        logger.info(f"⏳ Kontrol {wait_seconds}/240: {url[:80]}...")
+                        logger.info(f"⏳ Kontrol {wait_seconds}/300: {url[:80]}...")
 
-                        head = requests.head(url, timeout=15, allow_redirects=True)
+                        head = requests.head(url, timeout=20, allow_redirects=True)
 
                         if head.status_code == 200:
                             size = head.headers.get("content-length")
-
                             if size and int(size) > 1000000:
                                 logger.info(f"✅ Video hazır: {int(size)/1024/1024:.1f} MB")
 
                                 with requests.get(url, stream=True, timeout=300) as download:
                                     download.raise_for_status()
-
                                     with open(output_file, "wb") as f:
                                         for chunk in download.iter_content(chunk_size=1024 * 1024):
                                             if chunk:
                                                 f.write(chunk)
 
-                                if os.path.exists(output_file):
-                                    file_size = os.path.getsize(output_file)
-
-                                    if file_size > 1000000:
-                                        logger.info(f"✅ RapidAPI ile indirildi: {file_size/1024/1024:.1f} MB")
-                                        return True
-                                    else:
-                                        logger.warning(f"⚠️ Dosya küçük geldi: {file_size} bytes")
-                                        os.remove(output_file)
+                                if os.path.exists(output_file) and os.path.getsize(output_file) > 1000000:
+                                    logger.info("✅ RapidAPI ile indirildi")
+                                    return True
 
                         elif head.status_code == 404:
                             logger.info("⏳ Video hazır değil (404), bekleniyor...")
-
-                        else:
-                            logger.warning(f"⚠️ HEAD HTTP {head.status_code}")
 
                     except Exception as e:
                         logger.warning(f"⚠️ URL kontrol hatası: {str(e)[:150]}")
@@ -251,7 +231,6 @@ def download_via_rapidapi_fast(youtube_id, output_file):
                 time.sleep(20)
 
             logger.warning(f"⚠️ Bu key ile video hazırlanamadı: {api_key[:8]}...")
-            time.sleep(2)
 
         except Exception as e:
             logger.error(f"❌ RapidAPI hata: {str(e)[:200]}")
