@@ -1,4 +1,3 @@
-# fragman.yml'yi GÜNCELLE:
 name: Fragman Pipeline
 
 on:
@@ -13,27 +12,21 @@ jobs:
       - name: 📥 Repo Checkout
         uses: actions/checkout@v4
 
-      - name: 🧱 FFmpeg ve YouTube-DL Kur
+      - name: 🧱 FFmpeg Kur
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg python3 python3-pip
-          
-          # yt-dlp'yi BOTH şekilde kur
-          pip3 install --upgrade yt-dlp
-          
-          # Ayrıca binary olarak da kur
-          sudo wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
-          sudo chmod a+rx /usr/local/bin/yt-dlp
-          
-          # yt-dlp kurulumunu test et
-          yt-dlp --version
-          python3 -c "import yt_dlp; print(f'Python yt-dlp versiyon: {yt_dlp.version.__version__}')"
+
+      - name: 📦 Python Paketleri Kur
+        run: |
+          pip3 install --upgrade pip
+          pip3 install requests
 
       - name: 🎬 Fragman Üret
         env:
           PYTHONIOENCODING: utf-8
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-          RAPIDAPI_KEYS: ${{ secrets.RAPIDAPI_KEY_1 }},${{ secrets.RAPIDAPI_KEY_2 }},${{ secrets.RAPIDAPI_KEY_3 }}# Anahtarları virgülle birleştir
+          RAPIDAPI_KEYS: ${{ secrets.RAPIDAPI_KEY_1 }},${{ secrets.RAPIDAPI_KEY_2 }},${{ secrets.RAPIDAPI_KEY_3 }}
         run: |
           echo "Başlangıç: $(date)"
           python3 fragman.py
