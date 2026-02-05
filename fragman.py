@@ -1,6 +1,3 @@
-import sys
-sys.stdout.reconfigure(encoding="utf-8")
-sys.stderr.reconfigure(encoding="utf-8")
 #!/usr/bin/env python3
 """
 fragman.py - Film İnceleme Fragman Sistemi (SADECE RAPIDAPI)
