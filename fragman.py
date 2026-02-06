@@ -114,8 +114,8 @@ def extract_video_id(url):
 
 def get_youtube_url_from_tmdb(tmdb_id, api_key):
     try:
-        languages = ["tr-TR", "tr", "en-US", "en", None]
-
+        languages = ["en-US", "en", "tr-TR", "tr", None]
+        
         for lang in languages:
             url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/videos"
             params = {'api_key': api_key}
