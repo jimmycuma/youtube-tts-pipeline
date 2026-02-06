@@ -167,7 +167,7 @@ def get_youtube_url_from_tmdb(tmdb_id, api_key):
 
 
 def download_via_rapidapi_fast(youtube_id, output_file):
-    rapidapi_keys = get_all_rapidapi_keys()  # eski fonksiyonun buysa bunu kullan
+    rapidapi_keys = get_rapidapi_keys()  # eski fonksiyonun buysa bunu kullan
     if not rapidapi_keys:
         logger.error("❌ RapidAPI key yok")
         return False
